@@ -23,3 +23,22 @@ const versionsEl = document.querySelector('#versions');
 if (versionsEl) {
   versionsEl.textContent = formatVersions(window.versions);
 }
+
+const folderButton =
+  document.querySelector<HTMLButtonElement>('#select-folder');
+const selectedFolder =
+  document.querySelector<HTMLParagraphElement>('#selected-folder');
+
+folderButton?.addEventListener('click', async () => {
+  if (!selectedFolder) return;
+  folderButton.disabled = true;
+  try {
+    const folder = await window.yoink.selectFolder();
+    if (folder) selectedFolder.textContent = folder;
+  } catch {
+    selectedFolder.textContent =
+      'Could not open the folder picker. Please try again.';
+  } finally {
+    folderButton.disabled = false;
+  }
+});

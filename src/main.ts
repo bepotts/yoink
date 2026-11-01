@@ -1,6 +1,7 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
+import { IPC_CHANNELS } from './shared/ipc';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -33,6 +34,17 @@ const createWindow = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
+  ipcMain.handle(IPC_CHANNELS.selectFolder, async (event) => {
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    if (!owner) return null;
+
+    const result = await dialog.showOpenDialog(owner, {
+      title: 'Select a folder',
+      properties: ['openDirectory'],
+    });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
+
   createWindow();
 
   // On OS X it's common to re-create a window in the app when the

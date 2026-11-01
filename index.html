@@ -5,8 +5,22 @@
     <title>Yoink</title>
   </head>
   <body>
-    <h1>💖 Hello World!</h1>
-    <p>Welcome to your Electron application.</p>
+    <h1>Yoink</h1>
+    <div class="field">
+      <label for="link">Link</label>
+      <input id="link" type="url" placeholder="https://example.com" />
+    </div>
+    <div class="field">
+      <span id="folder-label">Folder</span>
+      <button
+        id="select-folder"
+        type="button"
+        aria-describedby="selected-folder"
+      >
+        Select folder
+      </button>
+      <p id="selected-folder" role="status">No folder selected</p>
+    </div>
     <p id="versions"></p>
     <script type="module" src="/src/renderer.ts"></script>
   </body>

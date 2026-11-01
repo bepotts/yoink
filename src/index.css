@@ -6,3 +6,43 @@ body {
   max-width: 38rem;
   padding: 2rem;
 }
+
+.field {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 1.5rem 0;
+}
+
+label,
+#folder-label {
+  font-weight: 600;
+}
+
+input,
+button {
+  box-sizing: border-box;
+  font: inherit;
+  padding: 0.7rem 1rem;
+  border: 1px solid #999;
+  border-radius: 6px;
+}
+
+input {
+  width: 100%;
+}
+
+button {
+  cursor: pointer;
+}
+
+#selected-folder {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+#versions {
+  color: #666;
+  font-size: 0.8rem;
+}
