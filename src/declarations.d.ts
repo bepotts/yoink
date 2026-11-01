@@ -5,6 +5,11 @@ declare module '*.css';
 
 interface Window {
   yoink: {
+    onDownloadProgress: (
+      callback: (
+        progress: import('./shared/download').DownloadProgress,
+      ) => void,
+    ) => () => void;
     selectFolder: () => Promise<string | null>;
     downloadVideo: (
       request: import('./shared/download').DownloadRequest,

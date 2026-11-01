@@ -1,8 +1,10 @@
 // Tests download validation, yt-dlp arguments, destination checks, and failure messages.
 
 import { beforeEach, expect, test, vi } from 'vitest';
-import { downloadVideo } from './download';
+import { downloadVideo } from '../src/download';
 import type { ExecFileOptions } from 'node:child_process';
+import { PassThrough } from 'node:stream';
+import type { DownloadProgress } from '../src/shared/download';
 
 const mocks = vi.hoisted(() => ({
   run: vi.fn<
@@ -50,7 +52,12 @@ test('passes the URL and folder as separate arguments without a shell', async ()
     [
       '--ignore-config',
       '--no-playlist',
-      '--no-progress',
+      '--newline',
+      '--progress',
+      '--progress-template',
+      'download:yoink-progress:%(progress)j',
+      '--progress-template',
+      'postprocess:yoink-processing',
       '--paths',
       '/tmp/My Folder',
       '--',
@@ -96,4 +103,37 @@ test('returns yt-dlp failure details', async () => {
   expect(
     await downloadVideo({ link: 'https://example.com', folder: '/tmp' }),
   ).toEqual({ success: false, error: 'Video unavailable' });
+});
+
+test('streams progress updates before the download completes', async () => {
+  const stdout = new PassThrough();
+  let complete!: (value: object) => void;
+  mocks.run.mockReturnValue(
+    Object.assign(
+      new Promise<object>((resolve) => {
+        complete = resolve;
+      }),
+      { child: { stdout } },
+    ),
+  );
+  const onProgress = vi.fn<(progress: DownloadProgress) => void>();
+  const result = downloadVideo(
+    { link: 'https://example.com', folder: '/tmp' },
+    onProgress,
+  );
+  await vi.waitFor(() => expect(mocks.run).toHaveBeenCalled());
+  stdout.write('yoink-progress:{"downloaded_bytes":');
+  expect(onProgress).not.toHaveBeenCalled();
+  stdout.write('50,"total_bytes":100}\n');
+  expect(onProgress).toHaveBeenCalledWith({
+    phase: 'downloading',
+    percent: 50,
+  });
+  stdout.end('yoink-processing\n');
+  expect(onProgress).toHaveBeenLastCalledWith({
+    phase: 'processing',
+    percent: null,
+  });
+  complete({});
+  await expect(result).resolves.toEqual({ success: true });
 });

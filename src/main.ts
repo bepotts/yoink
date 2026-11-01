@@ -57,7 +57,11 @@ app.whenReady().then(() => {
         return { success: false, error: 'A download is already in progress.' };
       downloads.add(id);
       try {
-        return await downloadVideo(request);
+        return await downloadVideo(request, (progress) => {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send(IPC_CHANNELS.downloadProgress, progress);
+          }
+        });
       } finally {
         downloads.delete(id);
       }

@@ -36,6 +36,27 @@ test('submits the link and folder and shows download completion', async ({
   await submit.click();
   await expect(submit).toBeDisabled();
   await expect(window.locator('#download-status')).toHaveText('Downloading…');
+  const progressBar = window.getByRole('progressbar', {
+    name: 'Download progress',
+  });
+  await expect(progressBar).toBeVisible();
+  await expect(progressBar).not.toHaveAttribute('value');
+  await app.evaluate(({ BrowserWindow }, channel) => {
+    BrowserWindow.getAllWindows()[0].webContents.send(channel, {
+      phase: 'downloading',
+      percent: 42,
+    });
+  }, IPC_CHANNELS.downloadProgress);
+  await expect(progressBar).toHaveAttribute('value', '42');
+  await expect(window.getByText('42% of current stream')).toBeVisible();
+  await app.evaluate(({ BrowserWindow }, channel) => {
+    BrowserWindow.getAllWindows()[0].webContents.send(channel, {
+      phase: 'processing',
+      percent: null,
+    });
+  }, IPC_CHANNELS.downloadProgress);
+  await expect(window.getByText('Processing video…')).toBeVisible();
+  await expect(progressBar).not.toHaveAttribute('value');
   await app.evaluate(() => {
     (
       globalThis as typeof globalThis & { finishDownload: () => void }
@@ -45,6 +66,7 @@ test('submits the link and folder and shows download completion', async ({
     'Download complete. Video saved to the selected folder.',
   );
   await expect(submit).toBeEnabled();
+  await expect(progressBar).toHaveCount(0);
 });
 
 test('accepts a link', async ({ app }) => {

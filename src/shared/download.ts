@@ -5,6 +5,11 @@ export interface DownloadRequest {
   folder: string;
 }
 
+export interface DownloadProgress {
+  phase: 'downloading' | 'processing';
+  percent: number | null;
+}
+
 export type DownloadResult =
   | { success: true }
   | { success: false; error: string };

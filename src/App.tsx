@@ -1,7 +1,7 @@
 // Renders the download form and manages link, folder, validation, and download state.
 
-import { useRef, useState, type SubmitEvent } from 'react';
-import { validateDownload } from './shared/download';
+import { useEffect, useRef, useState, type SubmitEvent } from 'react';
+import { validateDownload, type DownloadProgress } from './shared/download';
 import { formatVersions } from './shared/versions';
 
 export function App() {
@@ -11,6 +11,8 @@ export function App() {
   const [selectingFolder, setSelectingFolder] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [status, setStatus] = useState('');
+  const [progress, setProgress] = useState<DownloadProgress | null>(null);
+  useEffect(() => window.yoink.onDownloadProgress(setProgress), []);
   const linkInput = useRef<HTMLInputElement>(null);
   const folderButton = useRef<HTMLButtonElement>(null);
 
@@ -38,6 +40,7 @@ export function App() {
       return;
     }
     setDownloading(true);
+    setProgress(null);
     setStatus('Downloading…');
     try {
       const result = await window.yoink.downloadVideo(request);
@@ -95,6 +98,22 @@ export function App() {
         <p id="download-status" role="status" aria-live="polite">
           {status}
         </p>
+        {downloading && (
+          <div className="download-progress">
+            <progress
+              aria-label="Download progress"
+              max={100}
+              value={progress?.percent ?? undefined}
+            />
+            <span>
+              {progress?.phase === 'processing'
+                ? 'Processing video…'
+                : progress?.percent != null
+                  ? `${Math.round(progress.percent)}% of current stream`
+                  : 'Preparing download…'}
+            </span>
+          </div>
+        )}
       </form>
       <p id="versions">{formatVersions(window.versions)}</p>
     </main>

@@ -4,16 +4,20 @@ import { execFile } from 'node:child_process';
 import { access, stat } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { promisify } from 'node:util';
+import { createInterface } from 'node:readline';
+import { parseProgress } from './download-progress';
 import {
   validateDownload,
   type DownloadRequest,
   type DownloadResult,
+  type DownloadProgress,
 } from './shared/download';
 
 const run = promisify(execFile);
 
 export async function downloadVideo(
   request: DownloadRequest,
+  onProgress: (progress: DownloadProgress) => void = () => {},
 ): Promise<DownloadResult> {
   const error = validateDownload(request);
   if (error) return { success: false, error };
@@ -36,12 +40,17 @@ export async function downloadVideo(
   }
 
   try {
-    await run(
+    const download = run(
       'yt-dlp',
       [
         '--ignore-config',
         '--no-playlist',
-        '--no-progress',
+        '--newline',
+        '--progress',
+        '--progress-template',
+        'download:yoink-progress:%(progress)j',
+        '--progress-template',
+        'postprocess:yoink-processing',
         '--paths',
         request.folder,
         '--',
@@ -49,6 +58,18 @@ export async function downloadVideo(
       ],
       { env, windowsHide: true, maxBuffer: 10 * 1024 * 1024 },
     );
+    const lines = download.child?.stdout
+      ? createInterface({ input: download.child.stdout })
+      : null;
+    lines?.on('line', (line) => {
+      const progress = parseProgress(line);
+      if (progress) onProgress(progress);
+    });
+    try {
+      await download;
+    } finally {
+      lines?.close();
+    }
     return { success: true };
   } catch (cause) {
     const failure = cause as { code?: string; stderr?: string };

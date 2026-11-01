@@ -5,7 +5,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from './shared/ipc';
 import type { Versions } from './shared/versions';
-import type { DownloadRequest, DownloadResult } from './shared/download';
+import type {
+  DownloadRequest,
+  DownloadResult,
+  DownloadProgress,
+} from './shared/download';
 
 const versions: Versions = {
   node: process.versions.node,
@@ -15,6 +19,15 @@ const versions: Versions = {
 
 contextBridge.exposeInMainWorld('versions', versions);
 contextBridge.exposeInMainWorld('yoink', {
+  onDownloadProgress: (callback: (progress: DownloadProgress) => void) => {
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      progress: DownloadProgress,
+    ) => callback(progress);
+    ipcRenderer.on(IPC_CHANNELS.downloadProgress, listener);
+    return () =>
+      ipcRenderer.removeListener(IPC_CHANNELS.downloadProgress, listener);
+  },
   downloadVideo: (request: DownloadRequest): Promise<DownloadResult> =>
     ipcRenderer.invoke(IPC_CHANNELS.downloadVideo, request),
   selectFolder: (): Promise<string | null> =>
