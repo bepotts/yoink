@@ -1,7 +1,11 @@
+// Manages Electron windows and handles folder selection and download IPC requests.
+
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { IPC_CHANNELS } from './shared/ipc';
+import { downloadVideo } from './download';
+import type { DownloadRequest } from './shared/download';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -34,6 +38,31 @@ const createWindow = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
+  const downloads = new Set<number>();
+  ipcMain.handle(
+    IPC_CHANNELS.downloadVideo,
+    async (event, request: DownloadRequest) => {
+      if (
+        !request ||
+        typeof request.link !== 'string' ||
+        typeof request.folder !== 'string'
+      ) {
+        return {
+          success: false,
+          error: 'Please provide a video link and folder.',
+        };
+      }
+      const id = event.sender.id;
+      if (downloads.has(id))
+        return { success: false, error: 'A download is already in progress.' };
+      downloads.add(id);
+      try {
+        return await downloadVideo(request);
+      } finally {
+        downloads.delete(id);
+      }
+    },
+  );
   ipcMain.handle(IPC_CHANNELS.selectFolder, async (event) => {
     const owner = BrowserWindow.fromWebContents(event.sender);
     if (!owner) return null;

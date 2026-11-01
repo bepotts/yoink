@@ -1,6 +1,6 @@
 # Yoink
 
-Electron desktop app built with [Electron Forge](https://www.electronforge.io/), Vite and TypeScript.
+Electron desktop app built with [Electron Forge](https://www.electronforge.io/), Vite, React and TypeScript.
 
 ## Getting started
 
@@ -8,6 +8,11 @@ Electron desktop app built with [Electron Forge](https://www.electronforge.io/),
 npm install
 npm start
 ```
+
+Install `yt-dlp` and make it available on your PATH before downloading videos.
+On macOS with Homebrew, run `brew install yt-dlp ffmpeg`. FFmpeg enables merging
+separate video and audio streams. Paste a video link, select a destination folder,
+then click Submit. Yoink shows download completion or an error in the window.
 
 ## Scripts
 
@@ -29,7 +34,8 @@ npm start
 
 - `src/main.ts` — main process
 - `src/preload.ts` — preload script; exposes a typed API to the renderer via `contextBridge`
-- `src/renderer.ts` — renderer entry, loaded by `index.html`
+- `src/renderer.tsx` — React renderer entry, loaded by `index.html`
+- `src/App.tsx` — React UI and folder/download state
 - `src/shared/` — process-agnostic code, unit tested with `*.test.ts` files alongside it
 - `e2e/` — Playwright end-to-end tests that launch the real Electron app
 

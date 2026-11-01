@@ -1,3 +1,5 @@
+// Defines runtime version data and formats it for display.
+
 export interface Versions {
   node: string;
   chrome: string;

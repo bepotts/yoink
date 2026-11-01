@@ -1,27 +1,12 @@
 <!doctype html>
+<!-- Provides the HTML shell and root element for the React application. -->
 <html>
   <head>
     <meta charset="UTF-8" />
     <title>Yoink</title>
   </head>
   <body>
-    <h1>Yoink</h1>
-    <div class="field">
-      <label for="link">Link</label>
-      <input id="link" type="url" placeholder="https://example.com" />
-    </div>
-    <div class="field">
-      <span id="folder-label">Folder</span>
-      <button
-        id="select-folder"
-        type="button"
-        aria-describedby="selected-folder"
-      >
-        Select folder
-      </button>
-      <p id="selected-folder" role="status">No folder selected</p>
-    </div>
-    <p id="versions"></p>
-    <script type="module" src="/src/renderer.ts"></script>
+    <div id="root"></div>
+    <script type="module" src="/src/renderer.tsx"></script>
   </body>
 </html>

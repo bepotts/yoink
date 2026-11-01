@@ -1,3 +1,5 @@
+// Configures unit test discovery and source coverage reporting.
+
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({

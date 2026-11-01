@@ -1,3 +1,5 @@
+// Configures Electron end-to-end test execution, retries, and failure traces.
+
 import { defineConfig } from '@playwright/test';
 
 // Electron end-to-end tests. Run `npm run test:e2e`, which builds the app first.

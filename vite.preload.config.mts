@@ -1,3 +1,5 @@
+// Configures the Vite build for the Electron preload script.
+
 import { defineConfig } from 'vite';
 
 // https://vitejs.dev/config
