@@ -1,6 +1,7 @@
 // Manages Electron windows and handles folder selection and download IPC requests.
 
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { stat } from 'node:fs/promises';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { IPC_CHANNELS } from './shared/ipc';
@@ -38,6 +39,18 @@ const createWindow = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
+  ipcMain.handle(IPC_CHANNELS.openFolder, async (_event, folder: string) => {
+    if (typeof folder !== 'string' || !path.isAbsolute(folder)) {
+      return 'Please provide a valid folder path.';
+    }
+    try {
+      if (!(await stat(folder)).isDirectory())
+        return 'The download folder is no longer available.';
+      return await shell.openPath(folder);
+    } catch {
+      return 'Could not open the download folder. It may have been moved or deleted.';
+    }
+  });
   const downloads = new Set<number>();
   ipcMain.handle(
     IPC_CHANNELS.downloadVideo,

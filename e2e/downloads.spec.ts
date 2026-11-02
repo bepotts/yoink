@@ -9,13 +9,13 @@ test('submits the link and folder and shows download completion', async ({
   await app.evaluate(({ dialog, ipcMain }, channel) => {
     dialog.showOpenDialog = async () => ({
       canceled: false,
-      filePaths: ['/tmp/videos'],
+      filePaths: ['/tmp'],
     });
     ipcMain.removeHandler(channel);
     ipcMain.handle(channel, (_event, request) => {
       if (
         request.link !== 'https://example.com/video' ||
-        request.folder !== '/tmp/videos'
+        request.folder !== '/tmp'
       ) {
         throw new Error('Incorrect download request');
       }
@@ -27,11 +27,16 @@ test('submits the link and folder and shows download completion', async ({
     });
   }, IPC_CHANNELS.downloadVideo);
   const window = await app.firstWindow();
+  const openFolder = window.getByRole('button', {
+    name: 'Open folder',
+    exact: true,
+  });
+  await expect(openFolder).toHaveCount(0);
   await window
     .getByRole('textbox', { name: 'Link' })
     .fill('https://example.com/video');
   await window.getByRole('button', { name: 'Select folder' }).click();
-  await expect(window.locator('#selected-folder')).toHaveText('/tmp/videos');
+  await expect(window.locator('#selected-folder')).toHaveText('/tmp');
   const submit = window.getByRole('button', { name: 'Submit', exact: true });
   await submit.click();
   await expect(submit).toBeDisabled();
@@ -67,6 +72,39 @@ test('submits the link and folder and shows download completion', async ({
   );
   await expect(submit).toBeEnabled();
   await expect(progressBar).toHaveCount(0);
+  await expect(openFolder).toBeVisible();
+  await app.evaluate(({ shell, dialog }) => {
+    shell.openPath = async (folder) => {
+      Object.assign(globalThis, { openedFolder: folder });
+      return '';
+    };
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: ['/another-folder'],
+    });
+  });
+  await window.getByRole('button', { name: 'Select folder' }).click();
+  await expect(window.locator('#selected-folder')).toHaveText(
+    '/another-folder',
+  );
+  await openFolder.click();
+  await expect
+    .poll(() =>
+      app.evaluate(
+        () =>
+          (globalThis as typeof globalThis & { openedFolder?: string })
+            .openedFolder,
+      ),
+    )
+    .toBe('/tmp');
+  await app.evaluate(({ shell }) => {
+    shell.openPath = async () => 'Could not launch the file manager.';
+  });
+  await openFolder.click();
+  await expect(window.getByRole('alert')).toHaveText(
+    'Could not launch the file manager.',
+  );
+  await expect(openFolder).toBeEnabled();
 });
 
 test('accepts a link', async ({ app }) => {

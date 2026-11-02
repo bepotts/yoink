@@ -19,6 +19,8 @@ const versions: Versions = {
 
 contextBridge.exposeInMainWorld('versions', versions);
 contextBridge.exposeInMainWorld('yoink', {
+  openFolder: (folder: string): Promise<string> =>
+    ipcRenderer.invoke(IPC_CHANNELS.openFolder, folder),
   onDownloadProgress: (callback: (progress: DownloadProgress) => void) => {
     const listener = (
       _event: Electron.IpcRendererEvent,

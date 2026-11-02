@@ -11,6 +11,9 @@ export function App() {
   const [selectingFolder, setSelectingFolder] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [status, setStatus] = useState('');
+  const [completedFolder, setCompletedFolder] = useState('');
+  const [openingFolder, setOpeningFolder] = useState(false);
+  const [openFolderError, setOpenFolderError] = useState('');
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   useEffect(() => window.yoink.onDownloadProgress(setProgress), []);
   const linkInput = useRef<HTMLInputElement>(null);
@@ -40,10 +43,13 @@ export function App() {
       return;
     }
     setDownloading(true);
+    setCompletedFolder('');
+    setOpenFolderError('');
     setProgress(null);
     setStatus('Downloading…');
     try {
       const result = await window.yoink.downloadVideo(request);
+      if (result.success) setCompletedFolder(request.folder);
       setStatus(
         result.success
           ? 'Download complete. Video saved to the selected folder.'
@@ -53,6 +59,20 @@ export function App() {
       setStatus('Download failed. Please try again.');
     } finally {
       setDownloading(false);
+    }
+  }
+
+  async function openDownloadFolder() {
+    setOpeningFolder(true);
+    setOpenFolderError('');
+    try {
+      setOpenFolderError(await window.yoink.openFolder(completedFolder));
+    } catch {
+      setOpenFolderError(
+        'Could not open the download folder. Please try again.',
+      );
+    } finally {
+      setOpeningFolder(false);
     }
   }
 
@@ -98,6 +118,16 @@ export function App() {
         <p id="download-status" role="status" aria-live="polite">
           {status}
         </p>
+        {completedFolder && (
+          <button
+            type="button"
+            onClick={openDownloadFolder}
+            disabled={openingFolder}
+          >
+            Open folder
+          </button>
+        )}
+        {openFolderError && <p role="alert">{openFolderError}</p>}
         {downloading && (
           <div className="download-progress">
             <progress

@@ -5,6 +5,7 @@ declare module '*.css';
 
 interface Window {
   yoink: {
+    openFolder: (folder: string) => Promise<string>;
     onDownloadProgress: (
       callback: (
         progress: import('./shared/download').DownloadProgress,

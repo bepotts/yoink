@@ -4,4 +4,5 @@ export const IPC_CHANNELS = {
   selectFolder: 'select-folder',
   downloadVideo: 'download-video',
   downloadProgress: 'download-progress',
+  openFolder: 'open-folder',
 } as const;
