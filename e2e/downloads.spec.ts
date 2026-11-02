@@ -1,31 +1,40 @@
 // Verifies link entry, required input validation, and download submission feedback.
 
+import { mkdir } from 'node:fs/promises';
 import { expect, test } from './fixtures';
 import { IPC_CHANNELS } from '../src/shared/ipc';
 
 test('submits the link and folder and shows download completion', async ({
   app,
-}) => {
-  await app.evaluate(({ dialog, ipcMain }, channel) => {
-    dialog.showOpenDialog = async () => ({
-      canceled: false,
-      filePaths: ['/tmp'],
-    });
-    ipcMain.removeHandler(channel);
-    ipcMain.handle(channel, (_event, request) => {
-      if (
-        request.link !== 'https://example.com/video' ||
-        request.folder !== '/tmp'
-      ) {
-        throw new Error('Incorrect download request');
-      }
-      return new Promise((resolve) => {
-        Object.assign(globalThis, {
-          finishDownload: () => resolve({ success: true }),
+}, testInfo) => {
+  const downloadFolder = testInfo.outputPath('downloads');
+  const anotherFolder = testInfo.outputPath('another-folder');
+  await mkdir(downloadFolder, { recursive: true });
+  await mkdir(anotherFolder, { recursive: true });
+
+  await app.evaluate(
+    ({ dialog, ipcMain }, { channel, downloadFolder: folder }) => {
+      dialog.showOpenDialog = async () => ({
+        canceled: false,
+        filePaths: [folder],
+      });
+      ipcMain.removeHandler(channel);
+      ipcMain.handle(channel, (_event, request) => {
+        if (
+          request.link !== 'https://example.com/video' ||
+          request.folder !== folder
+        ) {
+          throw new Error('Incorrect download request');
+        }
+        return new Promise((resolve) => {
+          Object.assign(globalThis, {
+            finishDownload: () => resolve({ success: true }),
+          });
         });
       });
-    });
-  }, IPC_CHANNELS.downloadVideo);
+    },
+    { channel: IPC_CHANNELS.downloadVideo, downloadFolder },
+  );
   const window = await app.firstWindow();
   const openFolder = window.getByRole('button', {
     name: 'Open folder',
@@ -36,7 +45,7 @@ test('submits the link and folder and shows download completion', async ({
     .getByRole('textbox', { name: 'Link' })
     .fill('https://example.com/video');
   await window.getByRole('button', { name: 'Select folder' }).click();
-  await expect(window.locator('#selected-folder')).toHaveText('/tmp');
+  await expect(window.locator('#selected-folder')).toHaveText(downloadFolder);
   const submit = window.getByRole('button', { name: 'Submit', exact: true });
   await submit.click();
   await expect(submit).toBeDisabled();
@@ -73,20 +82,18 @@ test('submits the link and folder and shows download completion', async ({
   await expect(submit).toBeEnabled();
   await expect(progressBar).toHaveCount(0);
   await expect(openFolder).toBeVisible();
-  await app.evaluate(({ shell, dialog }) => {
+  await app.evaluate(({ shell, dialog }, selectedFolder) => {
     shell.openPath = async (folder) => {
       Object.assign(globalThis, { openedFolder: folder });
       return '';
     };
     dialog.showOpenDialog = async () => ({
       canceled: false,
-      filePaths: ['/another-folder'],
+      filePaths: [selectedFolder],
     });
-  });
+  }, anotherFolder);
   await window.getByRole('button', { name: 'Select folder' }).click();
-  await expect(window.locator('#selected-folder')).toHaveText(
-    '/another-folder',
-  );
+  await expect(window.locator('#selected-folder')).toHaveText(anotherFolder);
   await openFolder.click();
   await expect
     .poll(() =>
@@ -96,7 +103,7 @@ test('submits the link and folder and shows download completion', async ({
             .openedFolder,
       ),
     )
-    .toBe('/tmp');
+    .toBe(downloadFolder);
   await app.evaluate(({ shell }) => {
     shell.openPath = async () => 'Could not launch the file manager.';
   });

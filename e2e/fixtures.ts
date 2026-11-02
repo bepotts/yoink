@@ -13,7 +13,12 @@ export const test = base.extend<{ app: ElectronApplication }>({
   // eslint-disable-next-line no-empty-pattern
   app: async ({}, use) => {
     // Launch the Vite build output in `.vite/build` (see package.json `main`).
-    const app = await electron.launch({ args: ['.'] });
+    // act containers run as root; Chromium requires disabling its sandbox there.
+    const args = ['.'];
+    if (process.platform === 'linux' && process.getuid?.() === 0) {
+      args.push('--no-sandbox');
+    }
+    const app = await electron.launch({ args });
     try {
       await use(app);
     } finally {

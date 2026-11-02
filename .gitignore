@@ -150,3 +150,7 @@ coverage/
 playwright-report/
 test-results/
 blob-report/
+
+# Local GitHub Actions artifacts
+.act/
+logs/
