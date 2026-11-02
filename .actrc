@@ -1,0 +1,5 @@
+--workflows .github/workflows/ci.yml
+--platform ubuntu-latest=catthehacker/ubuntu:act-24.04
+--container-architecture linux/amd64
+--matrix os:ubuntu-latest
+--artifact-server-path .act/artifacts

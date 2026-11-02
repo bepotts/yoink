@@ -20,12 +20,18 @@
     "lint:fix": "oxlint --fix && oxfmt --write",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:all": "node scripts/run-tests.mjs test",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "electron-forge package && playwright test",
     "format": "oxfmt --write",
     "check": "npm run lint && npm run typecheck && npm run test",
-    "prepare": "husky"
+    "prepare": "husky",
+    "act:list": "act --list",
+    "act:check": "act push --job check",
+    "act:e2e": "act push --job e2e",
+    "act:ci": "act push",
+    "act:all": "node scripts/run-tests.mjs act"
   },
   "devDependencies": {
     "@electron-forge/cli": "^8.0.1",
@@ -39,6 +45,9 @@
     "@electron/fuses": "^2.1.3",
     "@playwright/test": "^1.64.1",
     "@types/electron-squirrel-startup": "^1.0.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
     "@vitest/coverage-v8": "^5.0.5",
     "electron": "45.1.0",
     "husky": "^9.1.7",
@@ -50,13 +59,15 @@
     "vitest": "^5.0.5"
   },
   "dependencies": {
-    "electron-squirrel-startup": "^1.0.1"
+    "electron-squirrel-startup": "^1.0.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "engines": {
     "node": ">=22"
   },
   "lint-staged": {
-    "*.{ts,mts,js,mjs,cjs}": [
+    "*.{ts,tsx,mts,js,mjs,cjs}": [
       "oxlint --fix",
       "oxfmt --write --no-error-on-unmatched-pattern"
     ],

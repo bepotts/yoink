@@ -1,5 +1,7 @@
+// Tests the display format for Electron, Chromium, and Node versions.
+
 import { describe, expect, it } from 'vitest';
-import { formatVersions } from './versions';
+import { formatVersions } from '../../src/shared/versions';
 
 describe('formatVersions', () => {
   it('formats runtime versions into one line', () => {

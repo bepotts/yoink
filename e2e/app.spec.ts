@@ -1,30 +1,16 @@
-import {
-  _electron as electron,
-  expect,
-  test,
-  type ElectronApplication,
-} from '@playwright/test';
+// Verifies the app window opens and displays runtime versions.
 
-let app: ElectronApplication;
+import { expect, test } from './fixtures';
 
-test.beforeEach(async () => {
-  // Launches the Vite build output in `.vite/build` (see package.json `main`).
-  app = await electron.launch({ args: ['.'] });
-});
-
-test.afterEach(async () => {
-  await app.close();
-});
-
-test('opens the main window', async () => {
+test('opens the main window', async ({ app }) => {
   const window = await app.firstWindow();
   await expect(window).toHaveTitle('Yoink');
   await expect(window.getByRole('heading', { level: 1 })).toContainText(
-    'Hello World!',
+    'Yoink',
   );
 });
 
-test('shows runtime versions from the preload bridge', async () => {
+test('shows runtime versions from the preload bridge', async ({ app }) => {
   const window = await app.firstWindow();
   const electronVersion = await app.evaluate(() => process.versions.electron);
   await expect(window.locator('#versions')).toContainText(
