@@ -44,6 +44,20 @@ button {
   overflow-wrap: anywhere;
 }
 
+.folder-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.save-folder-status {
+  margin: 0;
+}
+
+.save-folder-status:empty {
+  display: none;
+}
+
 #versions {
   color: #666;
   font-size: 0.8rem;

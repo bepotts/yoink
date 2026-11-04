@@ -4,9 +4,20 @@ import { useEffect, useRef, useState, type SubmitEvent } from 'react';
 import { validateDownload, type DownloadProgress } from './shared/download';
 import { formatVersions } from './shared/versions';
 
+const SAVED_FOLDER_KEY = 'yoink.savedFolder';
+
+function loadSavedFolder() {
+  try {
+    return localStorage.getItem(SAVED_FOLDER_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
 export function App() {
   const [link, setLink] = useState('');
-  const [folder, setFolder] = useState('');
+  const [folder, setFolder] = useState(loadSavedFolder);
+  const [saveFolderStatus, setSaveFolderStatus] = useState('');
   const [folderError, setFolderError] = useState('');
   const [selectingFolder, setSelectingFolder] = useState(false);
   const [downloading, setDownloading] = useState(false);
@@ -24,11 +35,23 @@ export function App() {
     setFolderError('');
     try {
       const selected = await window.yoink.selectFolder();
-      if (selected) setFolder(selected);
+      if (selected) {
+        setFolder(selected);
+        setSaveFolderStatus('');
+      }
     } catch {
       setFolderError('Could not open the folder picker. Please try again.');
     } finally {
       setSelectingFolder(false);
+    }
+  }
+
+  function saveFolder() {
+    try {
+      localStorage.setItem(SAVED_FOLDER_KEY, folder);
+      setSaveFolderStatus('Folder saved for future launches.');
+    } catch {
+      setSaveFolderStatus('Could not save the folder. Please try again.');
     }
   }
 
@@ -94,18 +117,30 @@ export function App() {
         </div>
         <div className="field">
           <span id="folder-label">Folder</span>
-          <button
-            ref={folderButton}
-            id="select-folder"
-            type="button"
-            aria-describedby="selected-folder"
-            disabled={selectingFolder || downloading}
-            onClick={selectFolder}
-          >
-            Select folder
-          </button>
+          <div className="folder-actions">
+            <button
+              ref={folderButton}
+              id="select-folder"
+              type="button"
+              aria-describedby="selected-folder"
+              disabled={selectingFolder || downloading}
+              onClick={selectFolder}
+            >
+              Select folder
+            </button>
+            <button
+              type="button"
+              disabled={!folder || selectingFolder || downloading}
+              onClick={saveFolder}
+            >
+              Save folder
+            </button>
+          </div>
           <p id="selected-folder" role="status">
             {folderError || folder || 'No folder selected'}
+          </p>
+          <p className="save-folder-status" role="status">
+            {saveFolderStatus}
           </p>
         </div>
         <button
