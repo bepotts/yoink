@@ -1,7 +1,7 @@
 // Tests parsing of yt-dlp progress, including estimates and processing updates.
 
 import { expect, test } from 'vitest';
-import { parseProgress } from '../src/download-progress';
+import { parseProgress } from '../src/ipc/download-progress';
 
 test('calculates percentages from exact or estimated totals', () => {
   expect(

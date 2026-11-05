@@ -1,10 +1,10 @@
 // Tests download validation, yt-dlp arguments, destination checks, and failure messages.
 
 import { beforeEach, expect, test, vi } from 'vitest';
-import { downloadVideo } from '../src/download';
+import { downloadVideo } from '../src/ipc/download';
 import type { ExecFileOptions } from 'node:child_process';
 import { PassThrough } from 'node:stream';
-import type { DownloadProgress } from '../src/shared/download';
+import type { DownloadProgress } from '../src/ipc/download-types';
 
 const mocks = vi.hoisted(() => ({
   run: vi.fn<
@@ -16,16 +16,31 @@ const mocks = vi.hoisted(() => ({
   >(),
   stat: vi.fn<() => Promise<{ isDirectory: () => boolean }>>(),
   access: vi.fn<() => Promise<void>>(),
+  mkdtemp: vi.fn<() => Promise<string>>(),
+  readdir: vi.fn<() => Promise<object[]>>(),
+  rm: vi.fn<() => Promise<void>>(),
+  save: vi.fn<() => Promise<string>>(),
 }));
 vi.mock('node:child_process', () => ({ execFile: mocks.run }));
 vi.mock('node:util', () => ({ promisify: () => mocks.run }));
-vi.mock('node:fs/promises', () => ({ stat: mocks.stat, access: mocks.access }));
+vi.mock('node:fs/promises', () => ({
+  stat: mocks.stat,
+  access: mocks.access,
+  mkdtemp: mocks.mkdtemp,
+  readdir: mocks.readdir,
+  rm: mocks.rm,
+}));
+vi.mock('../src/ipc/save-download', () => ({ saveDownload: mocks.save }));
 
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.stat.mockResolvedValue({ isDirectory: () => true });
   mocks.access.mockResolvedValue(undefined);
   mocks.run.mockResolvedValue({});
+  mocks.mkdtemp.mockResolvedValue('/tmp/My Folder/.yoink-test');
+  mocks.readdir.mockResolvedValue([{ name: 'video.mp4', isFile: () => true }]);
+  mocks.rm.mockResolvedValue(undefined);
+  mocks.save.mockResolvedValue('/tmp/My Folder/video.mp4');
 });
 
 test.each([
@@ -59,13 +74,21 @@ test('passes the URL and folder as separate arguments without a shell', async ()
       '--progress-template',
       'postprocess:yoink-processing',
       '--paths',
-      '/tmp/My Folder',
+      '/tmp/My Folder/.yoink-test',
       '--',
       link,
     ],
     expect.objectContaining({ windowsHide: true }),
   );
   expect(mocks.run.mock.calls[0][2].shell).toBeUndefined();
+  expect(mocks.save).toHaveBeenCalledWith(
+    '/tmp/My Folder/.yoink-test/video.mp4',
+    '/tmp/My Folder',
+  );
+  expect(mocks.rm).toHaveBeenCalledWith('/tmp/My Folder/.yoink-test', {
+    recursive: true,
+    force: true,
+  });
 });
 
 test('rejects an unavailable folder before starting yt-dlp', async () => {
@@ -103,6 +126,8 @@ test('returns yt-dlp failure details', async () => {
   expect(
     await downloadVideo({ link: 'https://example.com', folder: '/tmp' }),
   ).toEqual({ success: false, error: 'Video unavailable' });
+  expect(mocks.save).not.toHaveBeenCalled();
+  expect(mocks.rm).toHaveBeenCalledOnce();
 });
 
 test('streams progress updates before the download completes', async () => {

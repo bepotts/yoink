@@ -8,13 +8,13 @@ interface Window {
     openFolder: (folder: string) => Promise<string>;
     onDownloadProgress: (
       callback: (
-        progress: import('./shared/download').DownloadProgress,
+        progress: import('./ipc/download-types').DownloadProgress,
       ) => void,
     ) => () => void;
     selectFolder: () => Promise<string | null>;
     downloadVideo: (
-      request: import('./shared/download').DownloadRequest,
-    ) => Promise<import('./shared/download').DownloadResult>;
+      request: import('./ipc/download-types').DownloadRequest,
+    ) => Promise<import('./ipc/download-types').DownloadResult>;
   };
   versions: import('./shared/versions').Versions;
 }

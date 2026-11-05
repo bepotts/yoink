@@ -2,7 +2,7 @@
 
 import { mkdir } from 'node:fs/promises';
 import { expect, test } from './fixtures';
-import { IPC_CHANNELS } from '../src/shared/ipc';
+import { IPC_CHANNELS } from '../src/ipc/channels';
 
 test('submits the link and folder and shows download completion', async ({
   app,

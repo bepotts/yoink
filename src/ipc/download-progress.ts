@@ -1,6 +1,6 @@
 // Parses structured yt-dlp progress output into UI download updates.
 
-import type { DownloadProgress } from './shared/download';
+import type { DownloadProgress } from './download-types';
 
 export function parseProgress(line: string): DownloadProgress | null {
   if (line === 'yoink-processing')
