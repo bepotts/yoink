@@ -1,5 +1,7 @@
 // Configures Electron packaging, installers, Vite builds, and security fuses.
 
+import { existsSync } from 'node:fs';
+import { loadEnvFile } from 'node:process';
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
@@ -9,16 +11,26 @@ import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 
+// Local packaging settings are ignored by Git.
+if (existsSync('.env.local')) {
+  loadEnvFile('.env.local');
+}
+
 const config: ForgeConfig = {
   packagerConfig: {
+    name: 'Yoink',
+    executableName: 'Yoink',
+    appBundleId: process.env.YOINK_APP_BUNDLE_ID,
     asar: true,
+    icon: 'assets/icon',
+    extraResource: ['assets/icon.png'],
   },
   rebuildConfig: {},
   makers: [
-    new MakerSquirrel({}),
+    new MakerSquirrel({ setupIcon: 'assets/icon.ico' }),
     new MakerZIP({}, ['darwin']),
-    new MakerRpm({}),
-    new MakerDeb({}),
+    new MakerRpm({ options: { icon: 'assets/icon.png' } }),
+    new MakerDeb({ options: { icon: 'assets/icon.png' } }),
   ],
   plugins: [
     new VitePlugin({

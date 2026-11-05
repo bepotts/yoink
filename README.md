@@ -14,6 +14,20 @@ On macOS with Homebrew, run `brew install yt-dlp ffmpeg`. FFmpeg enables merging
 separate video and audio streams. Paste a video link, select a destination folder,
 then click Submit. Yoink shows download completion or an error in the window.
 
+## Environment configuration
+
+Copy the committed `.env.example` to `.env.local` in the project root:
+
+```bash
+cp .env.example .env.local
+```
+
+Set `YOINK_APP_BUNDLE_ID` in `.env.local` to your app's bundle ID. Electron Forge
+loads this file to configure `packagerConfig.appBundleId`.
+
+`.env.local` is ignored by Git and holds your local settings. Keep personal values
+out of `.env.example`; it is the shared template and should contain placeholders.
+
 ## Scripts
 
 | Command                 | What it does                                          |
