@@ -28,6 +28,33 @@ loads this file to configure `packagerConfig.appBundleId`.
 `.env.local` is ignored by Git and holds your local settings. Keep personal values
 out of `.env.example`; it is the shared template and should contain placeholders.
 
+## Install on macOS
+
+Set up `.env.local` as described above, then build on a Mac:
+
+```bash
+npm install
+npm run make:mac
+```
+
+Open the `.dmg` in `out/make/` and drag Yoink into Applications. The build targets
+your Mac's architecture (Apple Silicon or Intel). A ZIP is also created under
+`out/make/zip/darwin/`.
+
+To build and install directly into `~/Applications/Yoink.app`, run:
+
+```bash
+npm run make:install
+```
+
+Quit Yoink before running this command to update an existing installation. It runs
+`make:mac` first and installs only if the build succeeds. No administrator access
+is needed for the per-user Applications folder.
+
+These local builds are unsigned and are not notarized by Apple. Public distribution
+requires configuring Developer ID signing and notarization. Video downloads also
+require `yt-dlp` and FFmpeg installed on the destination Mac, as described above.
+
 ## Scripts
 
 | Command                 | What it does                                          |

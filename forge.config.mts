@@ -5,6 +5,7 @@ import { loadEnvFile } from 'node:process';
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
+import { MakerDMG } from '@electron-forge/maker-dmg';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
 import { VitePlugin } from '@electron-forge/plugin-vite';
@@ -21,6 +22,9 @@ const config: ForgeConfig = {
     name: 'Yoink',
     executableName: 'Yoink',
     appBundleId: process.env.YOINK_APP_BUNDLE_ID,
+    ...(process.env.YOINK_MAC_SIGNING_IDENTITY
+      ? { osxSign: { identity: process.env.YOINK_MAC_SIGNING_IDENTITY } }
+      : {}),
     asar: true,
     icon: 'assets/icon',
     extraResource: ['assets/icon.png'],
@@ -29,6 +33,7 @@ const config: ForgeConfig = {
   makers: [
     new MakerSquirrel({ setupIcon: 'assets/icon.ico' }),
     new MakerZIP({}, ['darwin']),
+    new MakerDMG({ name: 'Yoink', icon: 'assets/icon.icns' }),
     new MakerRpm({ options: { icon: 'assets/icon.png' } }),
     new MakerDeb({ options: { icon: 'assets/icon.png' } }),
   ],
