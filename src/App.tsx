@@ -1,7 +1,7 @@
 // Renders the download form and manages link, folder, validation, and download state.
 
 import { useEffect, useRef, useState, type SubmitEvent } from 'react';
-import { validateDownload, type DownloadProgress } from './shared/download';
+import { validateDownload, type DownloadProgress } from './ipc/download-types';
 import { formatVersions } from './shared/versions';
 
 const SAVED_FOLDER_KEY = 'yoink.savedFolder';

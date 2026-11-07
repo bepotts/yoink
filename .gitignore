@@ -154,3 +154,6 @@ blob-report/
 # Local GitHub Actions artifacts
 .act/
 logs/
+
+# macOS
+.DS_Store

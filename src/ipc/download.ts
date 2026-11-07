@@ -1,17 +1,19 @@
 // Validates the destination and runs yt-dlp to download a video, reporting failures.
 
 import { execFile } from 'node:child_process';
-import { access, stat } from 'node:fs/promises';
+import { access, stat, mkdtemp, readdir, rm } from 'node:fs/promises';
+import path from 'node:path';
 import { constants } from 'node:fs';
 import { promisify } from 'node:util';
 import { createInterface } from 'node:readline';
 import { parseProgress } from './download-progress';
+import { saveDownload } from './save-download';
 import {
   validateDownload,
   type DownloadRequest,
   type DownloadResult,
   type DownloadProgress,
-} from './shared/download';
+} from './download-types';
 
 const run = promisify(execFile);
 
@@ -39,7 +41,10 @@ export async function downloadVideo(
     env.PATH = `${env.PATH ?? ''}:/opt/homebrew/bin:/usr/local/bin`;
   }
 
+  let stagingFolder: string | undefined;
   try {
+    // Download separately so yt-dlp never skips or overwrites an existing video.
+    stagingFolder = await mkdtemp(path.join(request.folder, '.yoink-'));
     const download = run(
       'yt-dlp',
       [
@@ -52,7 +57,7 @@ export async function downloadVideo(
         '--progress-template',
         'postprocess:yoink-processing',
         '--paths',
-        request.folder,
+        stagingFolder,
         '--',
         request.link.trim(),
       ],
@@ -70,6 +75,12 @@ export async function downloadVideo(
     } finally {
       lines?.close();
     }
+    const files = await readdir(stagingFolder, { withFileTypes: true });
+    for (const file of files) {
+      if (file.isFile()) {
+        await saveDownload(path.join(stagingFolder, file.name), request.folder);
+      }
+    }
     return { success: true };
   } catch (cause) {
     const failure = cause as { code?: string; stderr?: string };
@@ -81,5 +92,13 @@ export async function downloadVideo(
           : failure.stderr?.trim().slice(-2000) ||
             'Download failed. Please check the link and try again.',
     };
+  } finally {
+    if (stagingFolder) {
+      await rm(stagingFolder, { recursive: true, force: true }).catch(
+        (cause) => {
+          console.warn('Could not clean up download temporary files:', cause);
+        },
+      );
+    }
   }
 }

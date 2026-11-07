@@ -3,13 +3,13 @@
 // See the Electron documentation for details on how to use preload scripts:
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPC_CHANNELS } from './shared/ipc';
+import { IPC_CHANNELS } from './ipc/channels';
 import type { Versions } from './shared/versions';
 import type {
   DownloadRequest,
   DownloadResult,
   DownloadProgress,
-} from './shared/download';
+} from './ipc/download-types';
 
 const versions: Versions = {
   node: process.versions.node,
