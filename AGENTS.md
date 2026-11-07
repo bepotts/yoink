@@ -1,0 +1,8 @@
+<!-- Repository instructions for agents working on Yoink. -->
+
+# Repository instructions
+
+- Keep `.env.example` in sync with `.env.local`: use the same environment variable names and document their purpose. Keep personal values and secrets in the Git-ignored `.env.local`; use placeholders or safe defaults in `.env.example`.
+- Add a comment at the top of every file explaining its purpose, using the file format's supported comment syntax.
+- Add a comment to every function declaration explaining its purpose.
+- Add a comment to every member variable or property in objects, classes, enums, and similar declarations explaining its purpose.
