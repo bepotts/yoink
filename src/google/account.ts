@@ -11,6 +11,29 @@ import type { DriveFolder } from './types/drive-types';
 
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 let connecting = false;
+// Share refreshed access tokens across folder validation and uploads.
+let savedClient: Promise<Auth.OAuth2Client> | undefined;
+
+// Stops awaiting a stalled operation when its authorization deadline expires.
+async function abortable<T>(
+  operation: () => Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  signal.throwIfAborted();
+  let onAbort!: () => void;
+  const cancelled = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(signal.reason);
+    signal.addEventListener('abort', onAbort, {
+      // Each deadline can cancel an operation only once.
+      once: true,
+    });
+  });
+  try {
+    return await Promise.race([operation(), cancelled]);
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+  }
+}
 
 // Locates encrypted account credentials outside the application bundle.
 function tokenPath(): string {
@@ -37,21 +60,39 @@ function oauthClient(redirectUri?: string) {
       'Configure the Google Desktop OAuth client in .env.local and rebuild Yoink.',
     );
   }
-  return new google.auth.OAuth2(
-    GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET,
+  const client = new google.auth.OAuth2({
+    // Public installed-application client identifier.
+    clientId: GOOGLE_CLIENT_ID,
+    // Google-issued desktop client secret.
+    clientSecret: GOOGLE_CLIENT_SECRET,
+    // Loopback callback for this authorization attempt.
     redirectUri,
-  );
+  });
+  // Refresh responses can omit unchanged scopes; retain them before the library replaces credentials.
+  client.on('tokens', (tokens) => {
+    tokens.scope ??= client.credentials.scope;
+  });
+  return client;
 }
 
-// Loads credentials into a main-process client; googleapis refreshes access tokens automatically.
-async function authenticatedClient() {
-  const client = oauthClient();
-  await requireSecureStorage();
-  const encrypted = await readFile(tokenPath());
-  const decrypted = await safeStorage.decryptStringAsync(encrypted);
-  client.setCredentials(JSON.parse(decrypted.result));
-  return client;
+// Loads one shared client so refreshed tokens remain available to subsequent API calls.
+async function authenticatedClient(): Promise<Auth.OAuth2Client> {
+  if (!savedClient) {
+    const pending = (async () => {
+      const client = oauthClient();
+      await requireSecureStorage();
+      const encrypted = await readFile(tokenPath());
+      const decrypted = await safeStorage.decryptStringAsync(encrypted);
+      client.setCredentials(JSON.parse(decrypted.result));
+      return client;
+    })();
+    savedClient = pending;
+    // Failed loads can be retried without invalidating a newer account's client.
+    void pending.catch(() => {
+      if (savedClient === pending) savedClient = undefined;
+    });
+  }
+  return savedClient;
 }
 
 // Reports saved connection state without sending tokens to the renderer.
@@ -98,8 +139,14 @@ async function authorizeGoogleAccount(
 ): Promise<DriveFolder | null> {
   if (connecting) throw new Error('Google sign-in is already in progress.');
   connecting = true;
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(new Error('Google sign-in timed out.')),
+    pickFolder ? 300_000 : 120_000,
+  );
+  const signal = controller.signal;
   try {
-    await requireSecureStorage();
+    await abortable(requireSecureStorage, signal);
     // Validate configuration before creating a listener or opening the browser.
     oauthClient();
     const state = randomBytes(32).toString('hex');
@@ -135,22 +182,28 @@ async function authorizeGoogleAccount(
       response.end('Selection received. You can return to Yoink.');
       acceptCallback(url);
     });
-    const timeout = setTimeout(
-      () => rejectCallback(new Error('Google sign-in timed out.')),
-      pickFolder ? 300_000 : 120_000,
-    );
     try {
-      await new Promise<void>((resolve, reject) => {
-        server.once('error', reject);
-        server.listen(0, '127.0.0.1', resolve);
-      });
+      await abortable(
+        () =>
+          new Promise<void>((resolve, reject) => {
+            server.once('error', reject);
+            server.listen(0, '127.0.0.1', resolve);
+          }),
+        signal,
+      );
       const address = server.address();
       if (!address || typeof address === 'string')
         throw new Error('Could not start Google sign-in.');
       const client = oauthClient(
         `http://127.0.0.1:${address.port}/oauth2callback`,
       );
-      const codes = await client.generateCodeVerifierAsync();
+      // Apply the same deadline to token-endpoint requests made by the OAuth library.
+      client.transporter.defaults.signal = signal;
+      client.transporter.defaults.timeout = 30_000;
+      const codes = await abortable(
+        () => client.generateCodeVerifierAsync(),
+        signal,
+      );
       const authorizationUrl = new URL(
         client.generateAuthUrl({
           // Persist offline access for uploads after the browser closes.
@@ -178,20 +231,24 @@ async function authorizeGoogleAccount(
           'application/vnd.google-apps.folder',
         );
       }
-      await shell.openExternal(authorizationUrl.href);
-      const callback = await callbackPromise;
+      await abortable(() => shell.openExternal(authorizationUrl.href), signal);
+      const callback = await abortable(() => callbackPromise, signal);
       const pickedIds = callback.searchParams.get('picked_file_ids');
       // Closing Picker without choosing a folder must preserve the existing connection.
       if (pickFolder && !pickedIds) return null;
       if (pickFolder && !/^[a-zA-Z0-9_-]{1,256}$/.test(pickedIds!)) {
         throw new Error('Google Picker did not return a single folder.');
       }
-      const { tokens } = await client.getToken({
-        // Exchange only the code from the state-validated callback.
-        code: callback.searchParams.get('code')!,
-        // Prove ownership of the original request.
-        codeVerifier: codes.codeVerifier,
-      });
+      const { tokens } = await abortable(
+        () =>
+          client.getToken({
+            // Exchange only the code from the state-validated callback.
+            code: callback.searchParams.get('code')!,
+            // Prove ownership of the original request.
+            codeVerifier: codes.codeVerifier,
+          }),
+        signal,
+      );
       if (
         !tokens.refresh_token ||
         !tokens.scope?.split(' ').includes(DRIVE_SCOPE)
@@ -207,14 +264,24 @@ async function authorizeGoogleAccount(
       });
       let folder: DriveFolder | null = null;
       if (pickFolder) {
-        const { data } = await drive.files.get({
-          // Resolve only the single identifier returned by Picker.
-          fileId: pickedIds!,
-          // Verify the destination really is a writable folder.
-          fields: 'id,name,mimeType,trashed,capabilities(canAddChildren)',
-          // Allow writable shared-drive destinations.
-          supportsAllDrives: true,
-        });
+        const { data } = await abortable(
+          () =>
+            drive.files.get(
+              {
+                // Resolve only the single identifier returned by Picker.
+                fileId: pickedIds!,
+                // Verify the destination really is a writable folder.
+                fields: 'id,name,mimeType,trashed,capabilities(canAddChildren)',
+                // Allow writable shared-drive destinations.
+                supportsAllDrives: true,
+              },
+              {
+                // Cancel in-flight Drive metadata requests at the authorization deadline.
+                signal,
+              },
+            ),
+          signal,
+        );
         if (
           !data.id ||
           !data.name ||
@@ -231,27 +298,46 @@ async function authorizeGoogleAccount(
           name: data.name,
         };
       } else {
-        await drive.about.get({
-          // Verify the project has Drive API access without listing account files.
-          fields: 'kind',
-        });
+        await abortable(
+          () =>
+            drive.about.get(
+              {
+                // Verify the project has Drive API access without listing account files.
+                fields: 'kind',
+              },
+              {
+                // The connection probe shares the same authorization deadline.
+                signal,
+              },
+            ),
+          signal,
+        );
       }
-      const encrypted = await safeStorage.encryptStringAsync(
-        JSON.stringify(tokens),
+      const encrypted = await abortable(
+        () => safeStorage.encryptStringAsync(JSON.stringify(tokens)),
+        signal,
       );
+      signal.throwIfAborted();
       const temporary = `${tokenPath()}.tmp`;
       await writeFile(temporary, encrypted, {
         // Restrict the credential file to this user.
         mode: 0o600,
       });
+      // Do not commit credentials after a timed-out request; finish local writes while locked.
+      signal.throwIfAborted();
       await rename(temporary, tokenPath());
+      // A cached client must not retain the completed authorization's abort signal.
+      delete client.transporter.defaults.signal;
+      // Video uploads may legitimately take longer than the short authorization requests.
+      delete client.transporter.defaults.timeout;
+      savedClient = Promise.resolve(client);
       return folder;
     } finally {
-      clearTimeout(timeout);
       server.close();
       server.closeAllConnections();
     }
   } finally {
+    clearTimeout(timeout);
     connecting = false;
   }
 }
@@ -303,12 +389,22 @@ export async function disconnectGoogleAccount(): Promise<GoogleAccountStatus> {
       /* Avoid credentials being recreated after disconnect. */ error:
         'Wait for Google sign-in to finish before disconnecting.',
     };
+  // Acquire the account-operation lock before the first asynchronous step.
+  connecting = true;
   try {
     const client = await authenticatedClient();
-    await client.revokeCredentials();
+    const token =
+      client.credentials.refresh_token ?? client.credentials.access_token;
+    if (!token) throw new Error('No saved Google credential to revoke.');
+    // Bound revocation separately without limiting long-running uploads on the shared client.
+    const revocationClient = oauthClient();
+    revocationClient.transporter.defaults.timeout = 30_000;
+    await revocationClient.revokeToken(token);
     await rm(tokenPath(), {
       /* Missing files are already disconnected. */ force: true,
     });
+    // Invalidate only after deletion so concurrent status reads cannot reload the old file.
+    savedClient = undefined;
     return { /* Account is revoked and removed. */ connected: false };
   } catch {
     return {
@@ -318,5 +414,7 @@ export async function disconnectGoogleAccount(): Promise<GoogleAccountStatus> {
       /* Explain that revocation did not finish. */ error:
         'Could not revoke Google access. Check your connection and try again.',
     };
+  } finally {
+    connecting = false;
   }
 }

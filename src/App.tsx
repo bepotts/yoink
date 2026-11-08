@@ -46,16 +46,17 @@ export function App() {
   async function toggleGoogleAccount() {
     setGoogleBusy(true);
     try {
-      setDriveFolder(null);
-      setGoogleAccount(
-        await (googleAccount.connected && !googleAccount.needsReconnect
-          ? window.yoink.disconnectGoogle()
-          : window.yoink.connectGoogle()),
-      );
+      const result = await (googleAccount.connected &&
+      !googleAccount.needsReconnect
+        ? window.yoink.disconnectGoogle()
+        : window.yoink.connectGoogle());
+      setGoogleAccount(result);
+      // Failed account changes retain the valid destination and existing credentials.
+      if (!result.error) setDriveFolder(null);
     } catch {
       setGoogleAccount({
-        // Retain the last known connection state.
-        connected: googleAccount.connected,
+        // Retain the last known connection and permission state.
+        ...googleAccount,
         // Report an IPC failure without provider data.
         error: 'Could not update the Google connection. Please try again.',
       });

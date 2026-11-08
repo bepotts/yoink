@@ -65,3 +65,77 @@ test('selects a Drive folder as the destination without requiring a local folder
     window.getByText('Google Drive: Videos', { exact: true }),
   ).toBeVisible();
 });
+
+for (const failureMode of ['error response', 'IPC exception']) {
+  test(`retains the Drive destination after disconnect fails with an ${failureMode}`, async ({
+    app,
+  }) => {
+    await app.evaluate(
+      ({ ipcMain }, { channels, mode }) => {
+        ipcMain.removeHandler(channels.googleStatus);
+        ipcMain.handle(channels.googleStatus, () => ({
+          // The selected destination belongs to an existing connection.
+          connected: true,
+        }));
+        ipcMain.removeHandler(channels.selectDriveFolder);
+        ipcMain.handle(channels.selectDriveFolder, () => ({
+          // Synthetic destination chosen through Google Picker.
+          id: 'videos-folder',
+          // User-facing selected folder name.
+          name: 'Videos',
+        }));
+        ipcMain.removeHandler(channels.disconnectGoogle);
+        let attempts = 0;
+        ipcMain.handle(channels.disconnectGoogle, () => {
+          attempts++;
+          if (attempts === 1) {
+            if (mode === 'IPC exception')
+              throw new Error('synthetic IPC failure');
+            return {
+              // The account is deliberately retained after failed revocation.
+              connected: true,
+              // Actionable error surfaced to the UI.
+              error:
+                'Could not revoke Google access. Check your connection and try again.',
+            };
+          }
+          return {
+            // The retry completes the disconnect.
+            connected: false,
+          };
+        });
+      },
+      {
+        // Shared channel names for the fake main-process operations.
+        channels: IPC_CHANNELS,
+        // Exercise both a handled provider failure and a rejected IPC request.
+        mode: failureMode,
+      },
+    );
+    const window = await app.firstWindow();
+    await window.reload();
+    await window.getByLabel('Save to').selectOption('drive');
+    await window
+      .getByRole('button', { name: 'Select Google Drive folder', exact: true })
+      .click();
+    const selected = window.getByText('Google Drive: Videos', { exact: true });
+    await expect(selected).toBeVisible();
+    const disconnect = window.getByRole('button', {
+      name: 'Disconnect Google',
+      exact: true,
+    });
+    await disconnect.click();
+    await expect(disconnect).toBeEnabled();
+    await expect(selected).toBeVisible();
+    await expect(
+      window.getByRole('button', { name: 'Submit', exact: true }),
+    ).toBeEnabled();
+    await disconnect.click();
+    await expect(
+      window.getByRole('button', { name: 'Connect Google Drive', exact: true }),
+    ).toBeVisible();
+    await expect(
+      window.getByText('No Google Drive folder selected', { exact: true }),
+    ).toBeVisible();
+  });
+}
