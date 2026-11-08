@@ -21,9 +21,9 @@ const config: ForgeConfig = {
   packagerConfig: {
     name: 'Yoink',
     executableName: 'Yoink',
-    appBundleId: process.env.YOINK_APP_BUNDLE_ID,
-    ...(process.env.YOINK_MAC_SIGNING_IDENTITY
-      ? { osxSign: { identity: process.env.YOINK_MAC_SIGNING_IDENTITY } }
+    appBundleId: process.env.APP_BUNDLE_ID,
+    ...(process.env.MAC_SIGNING_IDENTITY
+      ? { osxSign: { identity: process.env.MAC_SIGNING_IDENTITY } }
       : {}),
     asar: true,
     icon: 'assets/icon',

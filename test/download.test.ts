@@ -7,6 +7,10 @@ import { PassThrough } from 'node:stream';
 import type { DownloadProgress } from '../src/ipc/download-types';
 
 const mocks = vi.hoisted(() => ({
+  // Revalidates the selected Drive folder.
+  driveFolder: vi.fn<() => Promise<object>>(),
+  // Uploads finalized files.
+  upload: vi.fn<(...args: string[]) => Promise<void>>(),
   run: vi.fn<
     (
       command: string,
@@ -21,6 +25,12 @@ const mocks = vi.hoisted(() => ({
   rm: vi.fn<() => Promise<void>>(),
   save: vi.fn<() => Promise<string>>(),
 }));
+vi.mock('../src/google/drive', () => ({
+  // Fake Drive destination validation.
+  requireDriveFolder: mocks.driveFolder,
+  // Fake upload transport.
+  uploadDriveFile: mocks.upload,
+}));
 vi.mock('node:child_process', () => ({ execFile: mocks.run }));
 vi.mock('node:util', () => ({ promisify: () => mocks.run }));
 vi.mock('node:fs/promises', () => ({
@@ -34,6 +44,8 @@ vi.mock('../src/ipc/save-download', () => ({ saveDownload: mocks.save }));
 
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.driveFolder.mockResolvedValue({});
+  mocks.upload.mockResolvedValue(undefined);
   mocks.stat.mockResolvedValue({ isDirectory: () => true });
   mocks.access.mockResolvedValue(undefined);
   mocks.run.mockResolvedValue({});
@@ -161,4 +173,66 @@ test('streams progress updates before the download completes', async () => {
   });
   complete({});
   await expect(result).resolves.toEqual({ success: true });
+});
+
+test('Drive replaces the local folder and uploads finalized files', async () => {
+  const progress = vi.fn<(value: DownloadProgress) => void>();
+  await expect(
+    downloadVideo(
+      {
+        // A normal supported video URL.
+        link: 'https://example.com/video',
+        // No local destination is necessary.
+        folder: '',
+        // The explicit Drive upload destination.
+        driveFolderId: 'drive-folder',
+      },
+      progress,
+    ),
+  ).resolves.toEqual({ /* Complete only after upload. */ success: true });
+  expect(mocks.stat).not.toHaveBeenCalled();
+  expect(mocks.save).not.toHaveBeenCalled();
+  expect(mocks.upload).toHaveBeenCalledWith(
+    '/tmp/My Folder/.yoink-test/video.mp4',
+    'drive-folder',
+  );
+  expect(progress).toHaveBeenCalledWith({
+    /* Upload stage. */ phase: 'uploading',
+    /* Indeterminate transfer. */ percent: null,
+  });
+  expect(mocks.rm).toHaveBeenCalledOnce();
+});
+
+test('keeps a recovery copy when a Drive upload fails', async () => {
+  mocks.upload.mockRejectedValue(new Error('quota exceeded'));
+  const result = await downloadVideo({
+    // Download source.
+    link: 'https://example.com/video',
+    // Cloud-only destination.
+    folder: '',
+    // Upload destination.
+    driveFolderId: 'drive-folder',
+  });
+  expect(result).toMatchObject({
+    /* Upload did not complete. */ success: false,
+    /* Recovery location is actionable. */ error: expect.stringContaining(
+      '/tmp/My Folder/.yoink-test',
+    ),
+  });
+  expect(mocks.rm).not.toHaveBeenCalled();
+});
+
+test('rejects inaccessible Drive destinations before downloading', async () => {
+  mocks.driveFolder.mockRejectedValue(new Error('read-only folder'));
+  expect(
+    await downloadVideo({
+      // Download source.
+      link: 'https://example.com/video',
+      // Cloud-only destination.
+      folder: '',
+      // Read-only Drive folder.
+      driveFolderId: 'drive-folder',
+    }),
+  ).toMatchObject({ /* Upload destination cannot be used. */ success: false });
+  expect(mocks.run).not.toHaveBeenCalled();
 });

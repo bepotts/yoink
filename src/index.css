@@ -72,3 +72,8 @@ button {
   width: 100%;
   height: 1.25rem;
 }
+
+select {
+  font: inherit;
+  padding: 0.7rem;
+}

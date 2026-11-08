@@ -22,11 +22,22 @@ Copy the committed `.env.example` to `.env.local` in the project root:
 cp .env.example .env.local
 ```
 
-Set `YOINK_APP_BUNDLE_ID` in `.env.local` to your app's bundle ID. Electron Forge
+Set `APP_BUNDLE_ID` in `.env.local` to your app's bundle ID. Electron Forge
 loads this file to configure `packagerConfig.appBundleId`.
 
 `.env.local` is ignored by Git and holds your local settings. Keep personal values
 out of `.env.example`; it is the shared template and should contain placeholders.
+
+## Google Drive OAuth keys
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create or select
+   a project and enable **Google Drive API** and **Google Picker API**.
+2. Configure Google Auth Platform branding, audience, and data access with the
+   scope `https://www.googleapis.com/auth/drive.file`. Add your account as a test user
+   if the app is in Testing.
+3. Create an OAuth client with application type **Desktop app**.
+4. Copy its client ID and client secret into `.env.local` as `GOOGLE_CLIENT_ID`
+   and `GOOGLE_CLIENT_SECRET`.
 
 ## Install on macOS
 
