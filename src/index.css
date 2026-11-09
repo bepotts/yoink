@@ -77,3 +77,23 @@ select {
   font: inherit;
   padding: 0.7rem;
 }
+
+/* Keep the folder browser within the window for long OneDrive hierarchies. */
+dialog {
+  max-width: min(36rem, 85vw);
+  max-height: 80vh;
+  overflow: auto;
+  border: 1px solid #999;
+  border-radius: 8px;
+}
+dialog::backdrop {
+  background: rgb(0 0 0 / 35%);
+}
+dialog ul {
+  list-style: none;
+  padding: 0;
+}
+dialog li button {
+  margin: 0.25rem 0;
+  overflow-wrap: anywhere;
+}

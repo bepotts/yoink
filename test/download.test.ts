@@ -7,9 +7,9 @@ import { PassThrough } from 'node:stream';
 import type { DownloadProgress } from '../src/ipc/download-types';
 
 const mocks = vi.hoisted(() => ({
-  // Revalidates the selected Drive folder.
+  oneDriveFolder: vi.fn<() => Promise<object>>(),
+  oneDriveUpload: vi.fn<(...args: unknown[]) => Promise<void>>(),
   driveFolder: vi.fn<() => Promise<object>>(),
-  // Uploads finalized files.
   upload: vi.fn<(...args: string[]) => Promise<void>>(),
   run: vi.fn<
     (
@@ -25,10 +25,12 @@ const mocks = vi.hoisted(() => ({
   rm: vi.fn<() => Promise<void>>(),
   save: vi.fn<() => Promise<string>>(),
 }));
+vi.mock('../src/onedrive/drive', () => ({
+  requireOneDriveFolder: mocks.oneDriveFolder,
+  uploadOneDriveFile: mocks.oneDriveUpload,
+}));
 vi.mock('../src/google/drive', () => ({
-  // Fake Drive destination validation.
   requireDriveFolder: mocks.driveFolder,
-  // Fake upload transport.
   uploadDriveFile: mocks.upload,
 }));
 vi.mock('node:child_process', () => ({ execFile: mocks.run }));
@@ -44,6 +46,8 @@ vi.mock('../src/ipc/save-download', () => ({ saveDownload: mocks.save }));
 
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.oneDriveFolder.mockResolvedValue({});
+  mocks.oneDriveUpload.mockResolvedValue(undefined);
   mocks.driveFolder.mockResolvedValue({});
   mocks.upload.mockResolvedValue(undefined);
   mocks.stat.mockResolvedValue({ isDirectory: () => true });
@@ -180,11 +184,8 @@ test('Drive replaces the local folder and uploads finalized files', async () => 
   await expect(
     downloadVideo(
       {
-        // A normal supported video URL.
         link: 'https://example.com/video',
-        // No local destination is necessary.
         folder: '',
-        // The explicit Drive upload destination.
         driveFolderId: 'drive-folder',
       },
       progress,
@@ -197,8 +198,8 @@ test('Drive replaces the local folder and uploads finalized files', async () => 
     'drive-folder',
   );
   expect(progress).toHaveBeenCalledWith({
-    /* Upload stage. */ phase: 'uploading',
-    /* Indeterminate transfer. */ percent: null,
+    phase: 'uploading',
+    percent: null,
   });
   expect(mocks.rm).toHaveBeenCalledOnce();
 });
@@ -206,18 +207,13 @@ test('Drive replaces the local folder and uploads finalized files', async () => 
 test('keeps a recovery copy when a Drive upload fails', async () => {
   mocks.upload.mockRejectedValue(new Error('quota exceeded'));
   const result = await downloadVideo({
-    // Download source.
     link: 'https://example.com/video',
-    // Cloud-only destination.
     folder: '',
-    // Upload destination.
     driveFolderId: 'drive-folder',
   });
   expect(result).toMatchObject({
-    /* Upload did not complete. */ success: false,
-    /* Recovery location is actionable. */ error: expect.stringContaining(
-      '/tmp/My Folder/.yoink-test',
-    ),
+    success: false,
+    error: expect.stringContaining('/tmp/My Folder/.yoink-test'),
   });
   expect(mocks.rm).not.toHaveBeenCalled();
 });
@@ -226,13 +222,57 @@ test('rejects inaccessible Drive destinations before downloading', async () => {
   mocks.driveFolder.mockRejectedValue(new Error('read-only folder'));
   expect(
     await downloadVideo({
-      // Download source.
       link: 'https://example.com/video',
-      // Cloud-only destination.
       folder: '',
-      // Read-only Drive folder.
       driveFolderId: 'drive-folder',
     }),
   ).toMatchObject({ /* Upload destination cannot be used. */ success: false });
+  expect(mocks.run).not.toHaveBeenCalled();
+});
+
+test('OneDrive replaces the local destination and never uploads to Google', async () => {
+  expect(
+    await downloadVideo({
+      link: 'https://example.com/video',
+      folder: '',
+      oneDriveFolderId: 'ABC!123',
+    }),
+  ).toEqual({ /* All uploads completed. */ success: true });
+  expect(mocks.oneDriveUpload).toHaveBeenCalledWith(
+    '/tmp/My Folder/.yoink-test/video.mp4',
+    'ABC!123',
+    expect.any(Function),
+  );
+  expect(mocks.save).not.toHaveBeenCalled();
+  expect(mocks.upload).not.toHaveBeenCalled();
+  expect(mocks.stat).not.toHaveBeenCalled();
+});
+
+test('failed OneDrive uploads retain the downloaded recovery copy', async () => {
+  mocks.oneDriveUpload.mockRejectedValue(new Error('out of space'));
+  expect(
+    await downloadVideo({
+      link: 'https://example.com/video',
+      folder: '',
+      oneDriveFolderId: 'ABC!123',
+    }),
+  ).toMatchObject({
+    success: false,
+    error: expect.stringContaining('OneDrive upload failed.'),
+  });
+  expect(mocks.rm).not.toHaveBeenCalled();
+});
+
+test('rejects requests containing two cloud destinations', async () => {
+  expect(
+    await downloadVideo({
+      link: 'https://example.com/video',
+      folder: '',
+      driveFolderId: 'google-folder',
+      oneDriveFolderId: 'ABC!123',
+    }),
+  ).toMatchObject({
+    success: false,
+  });
   expect(mocks.run).not.toHaveBeenCalled();
 });

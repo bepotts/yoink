@@ -19,19 +19,20 @@ const versions: Versions = {
 
 contextBridge.exposeInMainWorld('versions', versions);
 contextBridge.exposeInMainWorld('yoink', {
-  // Opens Google Picker in the system browser and returns only the selected folder.
+  oneDriveStatus: () => ipcRenderer.invoke(IPC_CHANNELS.oneDriveStatus),
+  connectOneDrive: () => ipcRenderer.invoke(IPC_CHANNELS.connectOneDrive),
+  disconnectOneDrive: () => ipcRenderer.invoke(IPC_CHANNELS.disconnectOneDrive),
+  listOneDriveFolders: (id: string, nextPage?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.listOneDriveFolders, id, nextPage),
+  openOneDriveFolder: (id: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.openOneDriveFolder, id),
   selectDriveFolder: () => ipcRenderer.invoke(IPC_CHANNELS.selectDriveFolder),
-  // Opens a validated Drive folder URL in the browser.
   openDriveFolder: (id: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.openDriveFolder, id),
-  // Chooses upload sources through the main process native picker.
   uploadFiles: (folderId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.uploadFiles, folderId),
-  // Reports connection state without exposing credentials.
   googleStatus: () => ipcRenderer.invoke(IPC_CHANNELS.googleStatus),
-  // Starts browser-based OAuth in the main process.
   connectGoogle: () => ipcRenderer.invoke(IPC_CHANNELS.connectGoogle),
-  // Revokes access and removes stored credentials.
   disconnectGoogle: () => ipcRenderer.invoke(IPC_CHANNELS.disconnectGoogle),
   openFolder: (folder: string): Promise<string> =>
     ipcRenderer.invoke(IPC_CHANNELS.openFolder, folder),

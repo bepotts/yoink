@@ -23,11 +23,8 @@ export async function requireDriveFolder(id: string): Promise<DriveFolder> {
   validateDriveFolderId(id);
   const drive = await createDriveClient();
   const { data } = await drive.files.get({
-    // Resolve root aliases or the selected folder.
     fileId: id,
-    // Verify it is a writable, untrashed folder.
     fields: 'id,name,mimeType,trashed,capabilities(canAddChildren)',
-    // Accept destinations in shared drives.
     supportsAllDrives: true,
   });
   if (
@@ -41,9 +38,7 @@ export async function requireDriveFolder(id: string): Promise<DriveFolder> {
     );
   }
   return {
-    // Canonical folder ID, including when the caller supplied root.
     id: data.id,
-    // Friendly fallback for an unnamed root.
     name: data.name ?? 'My Drive',
   };
 }
@@ -59,27 +54,18 @@ export async function uploadDriveFile(
   try {
     await drive.files.create(
       {
-        // Create a separate Drive file under the destination.
         requestBody: {
-          // Preserve the original filename.
           name: path.basename(source),
-          // Upload into the chosen folder rather than the account root.
           parents: [folder.id],
         },
-        // Stream bytes without loading videos into memory.
         media: {
-          // Let Drive infer the final file type from its name/content.
           mimeType: 'application/octet-stream',
-          // Read only the main-process-approved source file.
           body: stream,
         },
-        // Request only the creation acknowledgment.
         fields: 'id',
-        // Permit uploads to writable shared-drive folders.
         supportsAllDrives: true,
       },
       {
-        // Avoid duplicating files by automatically retrying a partially completed create.
         retry: false,
       },
     );

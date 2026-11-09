@@ -4,6 +4,11 @@ import { useEffect, useRef, useState, type SubmitEvent } from 'react';
 import { validateDownload, type DownloadProgress } from './ipc/download-types';
 import type { GoogleAccountStatus } from './google/types/account-types';
 import type { DriveFolder } from './google/types/drive-types';
+import { OneDriveFolderPicker } from './OneDriveFolderPicker';
+import type {
+  OneDriveStatus,
+  OneDriveFolder,
+} from './onedrive/types/onedrive-types';
 import { formatVersions } from './shared/versions';
 
 const SAVED_FOLDER_KEY = 'yoink.savedFolder';
@@ -20,11 +25,46 @@ function loadSavedFolder() {
 // Renders downloads and the Google account connection controls.
 export function App() {
   const [googleAccount, setGoogleAccount] = useState<GoogleAccountStatus>({
-    // Load saved account state after the component mounts.
     connected: false,
   });
   const [googleBusy, setGoogleBusy] = useState(false);
-  const [destination, setDestination] = useState<'local' | 'drive'>('local');
+  const [microsoftAccount, setMicrosoftAccount] = useState<OneDriveStatus>({
+    connected: false,
+  });
+  const [microsoftBusy, setMicrosoftBusy] = useState(false);
+  const [oneDriveFolder, setOneDriveFolder] = useState<OneDriveFolder | null>(
+    null,
+  );
+  const [pickingOneDrive, setPickingOneDrive] = useState(false);
+  const [completedOneDrive, setCompletedOneDrive] = useState('');
+  useEffect(() => {
+    window.yoink
+      .oneDriveStatus()
+      .then(setMicrosoftAccount)
+      .catch(() => {});
+  }, []);
+
+  // Connects or removes the Microsoft account without dropping its folder on failure.
+  async function toggleMicrosoft() {
+    setMicrosoftBusy(true);
+    try {
+      const result = await (microsoftAccount.connected
+        ? window.yoink.disconnectOneDrive()
+        : window.yoink.connectOneDrive());
+      setMicrosoftAccount(result);
+      if (!result.error) setOneDriveFolder(null);
+    } catch {
+      setMicrosoftAccount({
+        ...microsoftAccount,
+        error: 'Could not update the Microsoft connection. Please try again.',
+      });
+    } finally {
+      setMicrosoftBusy(false);
+    }
+  }
+  const [destination, setDestination] = useState<
+    'local' | 'drive' | 'onedrive'
+  >('local');
   const [driveFolder, setDriveFolder] = useState<DriveFolder | null>(null);
   const [pickingDriveFolder, setPickingDriveFolder] = useState(false);
   const [completedDriveFolder, setCompletedDriveFolder] = useState('');
@@ -34,9 +74,7 @@ export function App() {
       .then(setGoogleAccount)
       .catch(() => {
         setGoogleAccount({
-          // Status lookup did not complete.
           connected: false,
-          // Let the user retry with the connect control.
           error: 'Could not read Google connection status.',
         });
       });
@@ -55,9 +93,7 @@ export function App() {
       if (!result.error) setDriveFolder(null);
     } catch {
       setGoogleAccount({
-        // Retain the last known connection and permission state.
         ...googleAccount,
-        // Report an IPC failure without provider data.
         error: 'Could not update the Google connection. Please try again.',
       });
     } finally {
@@ -80,6 +116,7 @@ export function App() {
   const linkInput = useRef<HTMLInputElement>(null);
   const folderButton = useRef<HTMLButtonElement>(null);
   const driveFolderButton = useRef<HTMLButtonElement>(null);
+  const oneDriveButton = useRef<HTMLButtonElement>(null);
 
   // Opens the local destination picker.
   async function selectFolder() {
@@ -131,15 +168,16 @@ export function App() {
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const request = {
-      // Normalize the submitted video URL.
       link: link.trim(),
-      // Drive destinations do not require a local folder.
       folder: destination === 'local' ? folder : '',
-      // Selecting Drive replaces local saving.
       ...(destination === 'drive'
         ? {
-            /* Selected cloud destination. */ driveFolderId:
-              driveFolder?.id ?? '',
+            driveFolderId: driveFolder?.id ?? '',
+          }
+        : {}),
+      ...(destination === 'onedrive'
+        ? {
+            oneDriveFolderId: oneDriveFolder?.id ?? '',
           }
         : {}),
     };
@@ -147,6 +185,7 @@ export function App() {
     if (error) {
       setStatus(error);
       if (error.includes('link')) linkInput.current?.focus();
+      else if (destination === 'onedrive') oneDriveButton.current?.focus();
       else if (destination === 'drive') driveFolderButton.current?.focus();
       else folderButton.current?.focus();
       return;
@@ -154,21 +193,26 @@ export function App() {
     setDownloading(true);
     setCompletedFolder('');
     setCompletedDriveFolder('');
+    setCompletedOneDrive('');
     setOpenFolderError('');
     setProgress(null);
     setStatus('Downloading…');
     try {
       const result = await window.yoink.downloadVideo(request);
       if (result.success) {
-        if (request.driveFolderId)
+        if (request.oneDriveFolderId)
+          setCompletedOneDrive(request.oneDriveFolderId);
+        else if (request.driveFolderId)
           setCompletedDriveFolder(request.driveFolderId);
         else setCompletedFolder(request.folder);
       }
       setStatus(
         result.success
-          ? request.driveFolderId
-            ? 'Upload complete. Video saved to Google Drive.'
-            : 'Download complete. Video saved to the selected folder.'
+          ? request.oneDriveFolderId
+            ? 'Upload complete. Video saved to OneDrive.'
+            : request.driveFolderId
+              ? 'Upload complete. Video saved to Google Drive.'
+              : 'Download complete. Video saved to the selected folder.'
           : result.error,
       );
     } catch {
@@ -204,6 +248,17 @@ export function App() {
     }
   }
 
+  // Opens the completed Microsoft destination through a validated main-process request.
+  async function openOneDrive() {
+    try {
+      setOpenFolderError(
+        await window.yoink.openOneDriveFolder(completedOneDrive),
+      );
+    } catch {
+      setOpenFolderError('Could not open the OneDrive folder.');
+    }
+  }
+
   return (
     <main>
       <h1>Yoink</h1>
@@ -230,6 +285,25 @@ export function App() {
               : 'Connect your Google account to upload to Drive.')}
         </p>
       </section>
+      <section aria-label="OneDrive connection">
+        <button
+          type="button"
+          disabled={microsoftBusy || downloading || pickingOneDrive}
+          onClick={toggleMicrosoft}
+        >
+          {microsoftBusy
+            ? 'Updating Microsoft connection…'
+            : microsoftAccount.connected
+              ? 'Disconnect OneDrive'
+              : 'Connect OneDrive'}
+        </button>
+        <p role="status">
+          {microsoftAccount.error ||
+            (microsoftAccount.connected
+              ? 'OneDrive connected.'
+              : 'Connect your Microsoft account to upload to OneDrive.')}
+        </p>
+      </section>
       <form onSubmit={submit} noValidate>
         <div className="field">
           <label htmlFor="link">Link</label>
@@ -248,14 +322,23 @@ export function App() {
           <select
             id="destination"
             value={destination}
-            disabled={downloading || googleBusy || pickingDriveFolder}
+            disabled={
+              downloading ||
+              googleBusy ||
+              pickingDriveFolder ||
+              microsoftBusy ||
+              pickingOneDrive
+            }
             onChange={(event) => {
-              setDestination(event.target.value as 'local' | 'drive');
+              setDestination(
+                event.target.value as 'local' | 'drive' | 'onedrive',
+              );
               setFolderError('');
             }}
           >
             <option value="local">Local folder</option>
             <option value="drive">Google Drive</option>
+            <option value="onedrive">OneDrive</option>
           </select>
         </div>
         {destination === 'local' ? (
@@ -287,12 +370,36 @@ export function App() {
               {saveFolderStatus}
             </p>
           </div>
+        ) : destination === 'onedrive' ? (
+          <div className="field">
+            <button
+              ref={oneDriveButton}
+              type="button"
+              disabled={
+                downloading || microsoftBusy || !microsoftAccount.connected
+              }
+              onClick={() => setPickingOneDrive(true)}
+            >
+              Select OneDrive folder
+            </button>
+            <p role="status">
+              {oneDriveFolder
+                ? `OneDrive: ${oneDriveFolder.name}`
+                : 'No OneDrive folder selected'}
+            </p>
+          </div>
         ) : (
           <div className="field">
             <button
               ref={driveFolderButton}
               type="button"
-              disabled={downloading || googleBusy || pickingDriveFolder}
+              disabled={
+                downloading ||
+                googleBusy ||
+                pickingDriveFolder ||
+                microsoftBusy ||
+                pickingOneDrive
+              }
               onClick={selectGoogleDriveFolder}
             >
               {pickingDriveFolder
@@ -314,6 +421,9 @@ export function App() {
             downloading ||
             selectingFolder ||
             pickingDriveFolder ||
+            pickingOneDrive ||
+            microsoftBusy ||
+            (destination === 'onedrive' && !microsoftAccount.connected) ||
             googleBusy ||
             (destination === 'drive' &&
               (!googleAccount.connected ||
@@ -339,6 +449,11 @@ export function App() {
             Open Google Drive folder
           </button>
         )}
+        {completedOneDrive && (
+          <button type="button" onClick={openOneDrive}>
+            Open OneDrive folder
+          </button>
+        )}
         {openFolderError && <p role="alert">{openFolderError}</p>}
         {downloading && (
           <div className="download-progress">
@@ -349,7 +464,9 @@ export function App() {
             />
             <span>
               {progress?.phase === 'uploading'
-                ? 'Uploading to Google Drive…'
+                ? destination === 'onedrive'
+                  ? 'Uploading to OneDrive…'
+                  : 'Uploading to Google Drive…'
                 : progress?.phase === 'processing'
                   ? 'Processing video…'
                   : progress?.percent != null
@@ -359,6 +476,15 @@ export function App() {
           </div>
         )}
       </form>
+      {pickingOneDrive && (
+        <OneDriveFolderPicker
+          onCancel={() => setPickingOneDrive(false)}
+          onSelect={(selected) => {
+            setOneDriveFolder(selected);
+            setPickingOneDrive(false);
+          }}
+        />
+      )}
       <p id="versions">{formatVersions(window.versions)}</p>
     </main>
   );
