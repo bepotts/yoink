@@ -8,13 +8,13 @@ import {
   listOneDriveFolders,
   uploadOneDriveFile,
   requireOneDriveFolder,
-} from '../src/onedrive/drive';
+} from '../src/cloud-storage/onedrive/drive';
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn<typeof fetch>(),
   token: vi.fn<() => Promise<string>>(),
 }));
-vi.mock('../src/onedrive/account', () => ({
+vi.mock('../src/cloud-storage/onedrive/account', () => ({
   oneDriveAccessToken: mocks.token,
 }));
 

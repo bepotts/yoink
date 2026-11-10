@@ -2,14 +2,17 @@
 
 import { beforeEach, expect, test, vi } from 'vitest';
 import { PassThrough } from 'node:stream';
-import { requireDriveFolder, uploadDriveFile } from '../src/google/drive';
+import {
+  requireDriveFolder,
+  uploadDriveFile,
+} from '../src/cloud-storage/google/drive';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn<(...args: unknown[]) => Promise<{ data: object }>>(),
   create: vi.fn<(...args: unknown[]) => Promise<object>>(),
   stream: vi.fn<(...args: unknown[]) => unknown>(),
 }));
-vi.mock('../src/google/account', () => ({
+vi.mock('../src/cloud-storage/google/account', () => ({
   createDriveClient: async () => ({
     files: {
       get: mocks.get,

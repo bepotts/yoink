@@ -2,7 +2,7 @@
 
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { GoogleAccountStatus } from '../src/google/types/account-types';
+import type { GoogleAccountStatus } from '../src/cloud-storage/google/types/account-types';
 // Reload the module per test to isolate its in-memory client cache and operation lock.
 let {
   connectGoogleAccount,
@@ -10,7 +10,7 @@ let {
   googleAccountStatus,
   selectDriveFolder,
   createDriveClient,
-} = await import('../src/google/account');
+} = await import('../src/cloud-storage/google/account');
 
 const mocks = vi.hoisted(() => ({
   read: vi.fn<() => Promise<Buffer>>(),
@@ -158,7 +158,7 @@ beforeEach(async () => {
     googleAccountStatus,
     selectDriveFolder,
     createDriveClient,
-  } = await import('../src/google/account'));
+  } = await import('../src/cloud-storage/google/account'));
   vi.resetAllMocks();
   mocks.defaults.length = 0;
   vi.stubGlobal('GOOGLE_CLIENT_ID', 'desktop-client');

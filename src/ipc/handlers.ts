@@ -5,18 +5,30 @@ import {
   connectGoogleAccount,
   disconnectGoogleAccount,
   selectDriveFolder,
-} from '../google/account';
+} from '../cloud-storage/google/account';
 import {
   requireDriveFolder,
   uploadDriveFile,
   validateDriveFolderId,
-} from '../google/drive';
+} from '../cloud-storage/google/drive';
 import {
   oneDriveStatus,
   connectOneDrive,
   disconnectOneDrive,
-} from '../onedrive/account';
-import { listOneDriveFolders, oneDriveFolderUrl } from '../onedrive/drive';
+} from '../cloud-storage/onedrive/account';
+import {
+  listOneDriveFolders,
+  oneDriveFolderUrl,
+} from '../cloud-storage/onedrive/drive';
+import {
+  dropboxStatus,
+  connectDropbox,
+  disconnectDropbox,
+} from '../cloud-storage/dropbox/account';
+import {
+  listDropboxFolders,
+  dropboxFolderUrl,
+} from '../cloud-storage/dropbox/drive';
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -27,6 +39,32 @@ import type { DownloadRequest } from './download-types';
 
 // Registers native download and Google account operations for the renderer.
 export function registerIpcHandlers(): void {
+  ipcMain.handle(IPC_CHANNELS.dropboxStatus, dropboxStatus);
+  ipcMain.handle(IPC_CHANNELS.connectDropbox, connectDropbox);
+  ipcMain.handle(IPC_CHANNELS.disconnectDropbox, disconnectDropbox);
+  ipcMain.handle(
+    IPC_CHANNELS.listDropboxFolders,
+    async (_event, folderPath: string, cursor?: string) => {
+      try {
+        return await listDropboxFolders(folderPath, cursor);
+      } catch {
+        throw new Error(
+          'Could not load Dropbox folders. Reconnect Dropbox and try again.',
+        );
+      }
+    },
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.openDropboxFolder,
+    async (_event, folderPath: string) => {
+      try {
+        await shell.openExternal(dropboxFolderUrl(folderPath));
+        return '';
+      } catch {
+        return 'Could not open the Dropbox folder.';
+      }
+    },
+  );
   ipcMain.handle(IPC_CHANNELS.oneDriveStatus, oneDriveStatus);
   ipcMain.handle(IPC_CHANNELS.connectOneDrive, connectOneDrive);
   ipcMain.handle(IPC_CHANNELS.disconnectOneDrive, disconnectOneDrive);
@@ -137,11 +175,13 @@ export function registerIpcHandlers(): void {
         });
         if (result.success)
           notifyDownloadComplete(
-            request.driveFolderId
-              ? 'Google Drive'
-              : request.oneDriveFolderId
-                ? 'OneDrive'
-                : request.folder,
+            request.dropboxFolderPath !== undefined
+              ? 'Dropbox'
+              : request.driveFolderId
+                ? 'Google Drive'
+                : request.oneDriveFolderId
+                  ? 'OneDrive'
+                  : request.folder,
           );
         return result;
       } finally {

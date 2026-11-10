@@ -121,7 +121,8 @@ beforeEach(() => {
 });
 
 test('validates state and saves only encrypted MSAL credentials', async () => {
-  const { connectOneDrive } = await import('../src/onedrive/account');
+  const { connectOneDrive } =
+    await import('../src/cloud-storage/onedrive/account');
   mocks.browser.mockImplementation(async () => {
     expect(callback('wrong', 'code=bad')).toBe(400);
     expect(mocks.token).not.toHaveBeenCalled();
@@ -141,7 +142,7 @@ test('validates state and saves only encrypted MSAL credentials', async () => {
 
 test('cancelled sign-in keeps the previous Microsoft account', async () => {
   const { oneDriveStatus, connectOneDrive } =
-    await import('../src/onedrive/account');
+    await import('../src/cloud-storage/onedrive/account');
   mocks.read.mockResolvedValue(Buffer.from('saved-encrypted'));
   expect((await oneDriveStatus()).connected).toBe(true);
   mocks.browser.mockImplementation(async () => {
@@ -154,7 +155,8 @@ test('cancelled sign-in keeps the previous Microsoft account', async () => {
 });
 
 test('requires OS encryption before opening Microsoft sign-in', async () => {
-  const { connectOneDrive } = await import('../src/onedrive/account');
+  const { connectOneDrive } =
+    await import('../src/cloud-storage/onedrive/account');
   mocks.secure.mockResolvedValue(false);
   expect((await connectOneDrive()).error).toBeTruthy();
   expect(mocks.browser).not.toHaveBeenCalled();
@@ -162,7 +164,7 @@ test('requires OS encryption before opening Microsoft sign-in', async () => {
 
 test('serializes refresh persistence before disconnect so stale credentials cannot be recreated', async () => {
   const { oneDriveAccessToken, disconnectOneDrive, oneDriveStatus } =
-    await import('../src/onedrive/account');
+    await import('../src/cloud-storage/onedrive/account');
   mocks.read.mockResolvedValue(Buffer.from('encrypted'));
   let finish!: (value: object) => void;
   mocks.silent.mockReturnValue(
@@ -192,7 +194,7 @@ test('Microsoft authorization timeout ignores a late code exchange and releases 
   vi.useFakeTimers();
   try {
     const { connectOneDrive, oneDriveStatus } =
-      await import('../src/onedrive/account');
+      await import('../src/cloud-storage/onedrive/account');
     let finish!: (value: object) => void;
     mocks.token.mockReturnValueOnce(
       new Promise((resolve) => {
@@ -221,7 +223,8 @@ test('Microsoft authorization timeout ignores a late code exchange and releases 
 
 test('personal-only registrations use the consumers authority for Microsoft sign-in', async () => {
   vi.stubGlobal('MICROSOFT_TENANT_ID', 'consumers');
-  const { connectOneDrive } = await import('../src/onedrive/account');
+  const { connectOneDrive } =
+    await import('../src/cloud-storage/onedrive/account');
   mocks.browser.mockImplementation(async () => {
     callback(mocks.url.mock.calls[0][0].state!, 'code=valid');
   });
@@ -236,7 +239,8 @@ test('personal-only registrations use the consumers authority for Microsoft sign
 
 test('rejects arbitrary authority URLs before opening the browser', async () => {
   vi.stubGlobal('MICROSOFT_TENANT_ID', 'https://attacker.example');
-  const { connectOneDrive } = await import('../src/onedrive/account');
+  const { connectOneDrive } =
+    await import('../src/cloud-storage/onedrive/account');
   expect((await connectOneDrive()).error).toBeTruthy();
   expect(mocks.browser).not.toHaveBeenCalled();
 });

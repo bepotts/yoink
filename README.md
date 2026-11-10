@@ -51,6 +51,15 @@ out of `.env.example`; it is the shared template and should contain placeholders
    `organizations` for work/school-only, or `common` for both. Restart development
    or rebuild after changing these settings.
 
+## Dropbox app setup
+
+1. In the [Dropbox App Console](https://www.dropbox.com/developers/apps), create a
+   scoped app with **Full Dropbox** access to choose existing folders.
+2. Enable `files.metadata.read` and `files.content.write`, and allow public clients
+   (PKCE). Register `http://127.0.0.1:53683/dropbox-callback` as a redirect URI.
+3. Copy the app key to `.env.local` as `DROPBOX_APP_KEY`. Keep `DROPBOX_REDIRECT_URI`
+   identical to the registered callback. No app secret is needed. Restart or rebuild.
+
 ## Install on macOS
 
 Set up `.env.local` as described above, then build on a Mac:

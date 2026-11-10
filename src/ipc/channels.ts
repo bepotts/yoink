@@ -1,6 +1,11 @@
 // Defines the IPC channel names shared by the main and preload processes.
 
 export const IPC_CHANNELS = {
+  dropboxStatus: 'dropbox-status',
+  connectDropbox: 'connect-dropbox',
+  disconnectDropbox: 'disconnect-dropbox',
+  listDropboxFolders: 'list-dropbox-folders',
+  openDropboxFolder: 'open-dropbox-folder',
   oneDriveStatus: 'onedrive-status',
   connectOneDrive: 'connect-onedrive',
   disconnectOneDrive: 'disconnect-onedrive',

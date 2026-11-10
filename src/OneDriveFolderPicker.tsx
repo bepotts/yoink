@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type {
   OneDriveFolder,
   OneDriveFolderPage,
-} from './onedrive/types/onedrive-types';
+} from './cloud-storage/onedrive/types/onedrive-types';
 
 // Displays a folder-only hierarchical browser with root selection and pagination.
 export function OneDriveFolderPicker({

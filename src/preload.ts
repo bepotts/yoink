@@ -19,6 +19,13 @@ const versions: Versions = {
 
 contextBridge.exposeInMainWorld('versions', versions);
 contextBridge.exposeInMainWorld('yoink', {
+  dropboxStatus: () => ipcRenderer.invoke(IPC_CHANNELS.dropboxStatus),
+  connectDropbox: () => ipcRenderer.invoke(IPC_CHANNELS.connectDropbox),
+  disconnectDropbox: () => ipcRenderer.invoke(IPC_CHANNELS.disconnectDropbox),
+  listDropboxFolders: (folderPath: string, cursor?: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.listDropboxFolders, folderPath, cursor),
+  openDropboxFolder: (folderPath: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.openDropboxFolder, folderPath),
   oneDriveStatus: () => ipcRenderer.invoke(IPC_CHANNELS.oneDriveStatus),
   connectOneDrive: () => ipcRenderer.invoke(IPC_CHANNELS.connectOneDrive),
   disconnectOneDrive: () => ipcRenderer.invoke(IPC_CHANNELS.disconnectOneDrive),

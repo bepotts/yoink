@@ -2,13 +2,18 @@
 
 import { useEffect, useRef, useState, type SubmitEvent } from 'react';
 import { validateDownload, type DownloadProgress } from './ipc/download-types';
-import type { GoogleAccountStatus } from './google/types/account-types';
-import type { DriveFolder } from './google/types/drive-types';
+import type { GoogleAccountStatus } from './cloud-storage/google/types/account-types';
+import type { DriveFolder } from './cloud-storage/google/types/drive-types';
+import { DropboxFolderPicker } from './DropboxFolderPicker';
+import type {
+  DropboxStatus,
+  DropboxFolder,
+} from './cloud-storage/dropbox/types/dropbox-types';
 import { OneDriveFolderPicker } from './OneDriveFolderPicker';
 import type {
   OneDriveStatus,
   OneDriveFolder,
-} from './onedrive/types/onedrive-types';
+} from './cloud-storage/onedrive/types/onedrive-types';
 import { formatVersions } from './shared/versions';
 
 const SAVED_FOLDER_KEY = 'yoink.savedFolder';
@@ -62,8 +67,56 @@ export function App() {
       setMicrosoftBusy(false);
     }
   }
+  const [dropboxAccount, setDropboxAccount] = useState<DropboxStatus>({
+    connected: false,
+  });
+  const [dropboxBusy, setDropboxBusy] = useState(false);
+  const [dropboxFolder, setDropboxFolder] = useState<DropboxFolder | null>(
+    null,
+  );
+  const [pickingDropbox, setPickingDropbox] = useState(false);
+  const [completedDropbox, setCompletedDropbox] = useState<string | null>(null);
+  const dropboxButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    window.yoink
+      .dropboxStatus()
+      .then(setDropboxAccount)
+      .catch(() => {});
+  }, []);
+
+  // Adds or disconnects a Dropbox account without losing a valid destination on failure.
+  async function toggleDropbox() {
+    setDropboxBusy(true);
+    try {
+      const result = await (dropboxAccount.connected
+        ? window.yoink.disconnectDropbox()
+        : window.yoink.connectDropbox());
+      setDropboxAccount(result);
+      if (!result.error) setDropboxFolder(null);
+    } catch {
+      setDropboxAccount({
+        ...dropboxAccount,
+        error: 'Could not update the Dropbox account. Please try again.',
+      });
+    } finally {
+      setDropboxBusy(false);
+    }
+  }
+
+  // Opens the completed Dropbox destination through the main-process URL validator.
+  async function openDropbox() {
+    if (completedDropbox === null) return;
+    try {
+      setOpenFolderError(
+        await window.yoink.openDropboxFolder(completedDropbox),
+      );
+    } catch {
+      setOpenFolderError('Could not open the Dropbox folder.');
+    }
+  }
+
   const [destination, setDestination] = useState<
-    'local' | 'drive' | 'onedrive'
+    'local' | 'drive' | 'onedrive' | 'dropbox'
   >('local');
   const [driveFolder, setDriveFolder] = useState<DriveFolder | null>(null);
   const [pickingDriveFolder, setPickingDriveFolder] = useState(false);
@@ -180,11 +233,15 @@ export function App() {
             oneDriveFolderId: oneDriveFolder?.id ?? '',
           }
         : {}),
+      ...(destination === 'dropbox'
+        ? { dropboxFolderPath: dropboxFolder?.path ?? '__not_selected__' }
+        : {}),
     };
     const error = validateDownload(request);
     if (error) {
       setStatus(error);
       if (error.includes('link')) linkInput.current?.focus();
+      else if (destination === 'dropbox') dropboxButton.current?.focus();
       else if (destination === 'onedrive') oneDriveButton.current?.focus();
       else if (destination === 'drive') driveFolderButton.current?.focus();
       else folderButton.current?.focus();
@@ -194,13 +251,16 @@ export function App() {
     setCompletedFolder('');
     setCompletedDriveFolder('');
     setCompletedOneDrive('');
+    setCompletedDropbox(null);
     setOpenFolderError('');
     setProgress(null);
     setStatus('Downloading…');
     try {
       const result = await window.yoink.downloadVideo(request);
       if (result.success) {
-        if (request.oneDriveFolderId)
+        if (request.dropboxFolderPath !== undefined)
+          setCompletedDropbox(request.dropboxFolderPath);
+        else if (request.oneDriveFolderId)
           setCompletedOneDrive(request.oneDriveFolderId);
         else if (request.driveFolderId)
           setCompletedDriveFolder(request.driveFolderId);
@@ -208,11 +268,13 @@ export function App() {
       }
       setStatus(
         result.success
-          ? request.oneDriveFolderId
-            ? 'Upload complete. Video saved to OneDrive.'
-            : request.driveFolderId
-              ? 'Upload complete. Video saved to Google Drive.'
-              : 'Download complete. Video saved to the selected folder.'
+          ? request.dropboxFolderPath !== undefined
+            ? 'Upload complete. Video saved to Dropbox.'
+            : request.oneDriveFolderId
+              ? 'Upload complete. Video saved to OneDrive.'
+              : request.driveFolderId
+                ? 'Upload complete. Video saved to Google Drive.'
+                : 'Download complete. Video saved to the selected folder.'
           : result.error,
       );
     } catch {
@@ -304,6 +366,25 @@ export function App() {
               : 'Connect your Microsoft account to upload to OneDrive.')}
         </p>
       </section>
+      <section aria-label="Dropbox connection">
+        <button
+          type="button"
+          disabled={dropboxBusy || downloading || pickingDropbox}
+          onClick={toggleDropbox}
+        >
+          {dropboxBusy
+            ? 'Updating Dropbox account…'
+            : dropboxAccount.connected
+              ? 'Disconnect Dropbox'
+              : 'Add Dropbox account'}
+        </button>
+        <p role="status">
+          {dropboxAccount.error ||
+            (dropboxAccount.connected
+              ? 'Dropbox connected.'
+              : 'Add your Dropbox account to upload videos to Dropbox.')}
+        </p>
+      </section>
       <form onSubmit={submit} noValidate>
         <div className="field">
           <label htmlFor="link">Link</label>
@@ -327,11 +408,17 @@ export function App() {
               googleBusy ||
               pickingDriveFolder ||
               microsoftBusy ||
-              pickingOneDrive
+              pickingOneDrive ||
+              dropboxBusy ||
+              pickingDropbox
             }
             onChange={(event) => {
               setDestination(
-                event.target.value as 'local' | 'drive' | 'onedrive',
+                event.target.value as
+                  | 'local'
+                  | 'drive'
+                  | 'onedrive'
+                  | 'dropbox',
               );
               setFolderError('');
             }}
@@ -339,6 +426,7 @@ export function App() {
             <option value="local">Local folder</option>
             <option value="drive">Google Drive</option>
             <option value="onedrive">OneDrive</option>
+            <option value="dropbox">Dropbox</option>
           </select>
         </div>
         {destination === 'local' ? (
@@ -368,6 +456,22 @@ export function App() {
             </p>
             <p className="save-folder-status" role="status">
               {saveFolderStatus}
+            </p>
+          </div>
+        ) : destination === 'dropbox' ? (
+          <div className="field">
+            <button
+              ref={dropboxButton}
+              type="button"
+              disabled={downloading || dropboxBusy || !dropboxAccount.connected}
+              onClick={() => setPickingDropbox(true)}
+            >
+              Select Dropbox folder
+            </button>
+            <p role="status">
+              {dropboxFolder
+                ? `Dropbox: ${dropboxFolder.name}`
+                : 'No Dropbox folder selected'}
             </p>
           </div>
         ) : destination === 'onedrive' ? (
@@ -422,6 +526,9 @@ export function App() {
             selectingFolder ||
             pickingDriveFolder ||
             pickingOneDrive ||
+            pickingDropbox ||
+            dropboxBusy ||
+            (destination === 'dropbox' && !dropboxAccount.connected) ||
             microsoftBusy ||
             (destination === 'onedrive' && !microsoftAccount.connected) ||
             googleBusy ||
@@ -454,6 +561,11 @@ export function App() {
             Open OneDrive folder
           </button>
         )}
+        {completedDropbox !== null && (
+          <button type="button" onClick={openDropbox}>
+            Open Dropbox folder
+          </button>
+        )}
         {openFolderError && <p role="alert">{openFolderError}</p>}
         {downloading && (
           <div className="download-progress">
@@ -464,9 +576,11 @@ export function App() {
             />
             <span>
               {progress?.phase === 'uploading'
-                ? destination === 'onedrive'
-                  ? 'Uploading to OneDrive…'
-                  : 'Uploading to Google Drive…'
+                ? destination === 'dropbox'
+                  ? 'Uploading to Dropbox…'
+                  : destination === 'onedrive'
+                    ? 'Uploading to OneDrive…'
+                    : 'Uploading to Google Drive…'
                 : progress?.phase === 'processing'
                   ? 'Processing video…'
                   : progress?.percent != null
@@ -482,6 +596,15 @@ export function App() {
           onSelect={(selected) => {
             setOneDriveFolder(selected);
             setPickingOneDrive(false);
+          }}
+        />
+      )}
+      {pickingDropbox && (
+        <DropboxFolderPicker
+          onCancel={() => setPickingDropbox(false)}
+          onSelect={(selected) => {
+            setDropboxFolder(selected);
+            setPickingDropbox(false);
           }}
         />
       )}

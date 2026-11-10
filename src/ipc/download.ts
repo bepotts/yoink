@@ -4,8 +4,18 @@ import { execFile } from 'node:child_process';
 import { access, stat, mkdtemp, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
-import { requireOneDriveFolder, uploadOneDriveFile } from '../onedrive/drive';
-import { requireDriveFolder, uploadDriveFile } from '../google/drive';
+import {
+  requireDropboxFolder,
+  uploadDropboxFile,
+} from '../cloud-storage/dropbox/drive';
+import {
+  requireOneDriveFolder,
+  uploadOneDriveFile,
+} from '../cloud-storage/onedrive/drive';
+import {
+  requireDriveFolder,
+  uploadDriveFile,
+} from '../cloud-storage/google/drive';
 import { constants } from 'node:fs';
 import { promisify } from 'node:util';
 import { createInterface } from 'node:readline';
@@ -28,13 +38,18 @@ export async function downloadVideo(
   const error = validateDownload(request);
   if (error) return { success: false, error };
 
-  const cloud = request.driveFolderId
-    ? 'Google Drive'
-    : request.oneDriveFolderId
-      ? 'OneDrive'
-      : null;
+  const cloud =
+    request.dropboxFolderPath !== undefined
+      ? 'Dropbox'
+      : request.driveFolderId
+        ? 'Google Drive'
+        : request.oneDriveFolderId
+          ? 'OneDrive'
+          : null;
   try {
-    if (request.oneDriveFolderId) {
+    if (request.dropboxFolderPath !== undefined) {
+      await requireDropboxFolder(request.dropboxFolderPath);
+    } else if (request.oneDriveFolderId) {
       await requireOneDriveFolder(request.oneDriveFolderId);
     } else if (request.driveFolderId) {
       await requireDriveFolder(request.driveFolderId);
@@ -107,7 +122,13 @@ export async function downloadVideo(
     }
     for (const file of files) {
       if (file.isFile()) {
-        if (request.oneDriveFolderId) {
+        if (request.dropboxFolderPath !== undefined) {
+          await uploadDropboxFile(
+            path.join(stagingFolder, file.name),
+            request.dropboxFolderPath,
+            (percent) => onProgress({ phase: 'uploading', percent }),
+          );
+        } else if (request.oneDriveFolderId) {
           await uploadOneDriveFile(
             path.join(stagingFolder, file.name),
             request.oneDriveFolderId,

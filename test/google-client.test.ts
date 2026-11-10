@@ -48,7 +48,8 @@ function driveAuth(drive: drive_v3.Drive): Auth.OAuth2Client {
 }
 
 test('concurrent Drive clients share a single refresh rather than restoring expired tokens', async () => {
-  const { createDriveClient } = await import('../src/google/account');
+  const { createDriveClient } =
+    await import('../src/cloud-storage/google/account');
   const [validation, upload] = await Promise.all([
     createDriveClient(),
     createDriveClient(),
