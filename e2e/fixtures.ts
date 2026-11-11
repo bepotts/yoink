@@ -10,13 +10,11 @@ import {
 export { expect } from '@playwright/test';
 
 export const test = base.extend<{ app: ElectronApplication }>({
-  // Playwright requires destructuring here to discover fixture dependencies.
   // eslint-disable-next-line no-empty-pattern
   app: async ({}, use, testInfo) => {
     // Prevent saved destinations and Google credentials from leaking into tests.
     const userData = testInfo.outputPath('user-data');
     await mkdir(userData, {
-      // Playwright creates each test's own output directory on demand.
       recursive: true,
     });
     // Launch the Vite build output in `.vite/build` (see package.json `main`).

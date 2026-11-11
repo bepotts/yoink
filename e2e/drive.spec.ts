@@ -9,7 +9,6 @@ test('selects a Drive folder as the destination without requiring a local folder
   await app.evaluate(({ ipcMain }, channels) => {
     ipcMain.removeHandler(channels.googleStatus);
     ipcMain.handle(channels.googleStatus, () => ({
-      // Fake a connected upload-capable account without live Google access.
       connected: true,
     }));
     ipcMain.removeHandler(channels.selectDriveFolder);
@@ -18,9 +17,7 @@ test('selects a Drive folder as the destination without requiring a local folder
       selections++;
       if (selections > 1) return null;
       return {
-        // Simulate the folder returned by the browser-based Google Picker.
         id: 'videos-folder',
-        // Verified display name.
         name: 'Videos',
       };
     });
@@ -30,7 +27,6 @@ test('selects a Drive folder as the destination without requiring a local folder
         throw new Error('Drive must replace the local folder');
       }
       return {
-        // Simulate successful transfer after validating the destination.
         success: true,
       };
     });
@@ -74,14 +70,11 @@ for (const failureMode of ['error response', 'IPC exception']) {
       ({ ipcMain }, { channels, mode }) => {
         ipcMain.removeHandler(channels.googleStatus);
         ipcMain.handle(channels.googleStatus, () => ({
-          // The selected destination belongs to an existing connection.
           connected: true,
         }));
         ipcMain.removeHandler(channels.selectDriveFolder);
         ipcMain.handle(channels.selectDriveFolder, () => ({
-          // Synthetic destination chosen through Google Picker.
           id: 'videos-folder',
-          // User-facing selected folder name.
           name: 'Videos',
         }));
         ipcMain.removeHandler(channels.disconnectGoogle);
@@ -92,23 +85,18 @@ for (const failureMode of ['error response', 'IPC exception']) {
             if (mode === 'IPC exception')
               throw new Error('synthetic IPC failure');
             return {
-              // The account is deliberately retained after failed revocation.
               connected: true,
-              // Actionable error surfaced to the UI.
               error:
                 'Could not revoke Google access. Check your connection and try again.',
             };
           }
           return {
-            // The retry completes the disconnect.
             connected: false,
           };
         });
       },
       {
-        // Shared channel names for the fake main-process operations.
         channels: IPC_CHANNELS,
-        // Exercise both a handled provider failure and a rejected IPC request.
         mode: failureMode,
       },
     );

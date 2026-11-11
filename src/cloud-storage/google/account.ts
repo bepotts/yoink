@@ -24,7 +24,6 @@ async function abortable<T>(
   const cancelled = new Promise<never>((_resolve, reject) => {
     onAbort = () => reject(signal.reason);
     signal.addEventListener('abort', onAbort, {
-      // Each deadline can cancel an operation only once.
       once: true,
     });
   });
@@ -61,11 +60,8 @@ function oauthClient(redirectUri?: string) {
     );
   }
   const client = new google.auth.OAuth2({
-    // Public installed-application client identifier.
     clientId: GOOGLE_CLIENT_ID,
-    // Google-issued desktop client secret.
     clientSecret: GOOGLE_CLIENT_SECRET,
-    // Loopback callback for this authorization attempt.
     redirectUri,
   });
   // Refresh responses can omit unchanged scopes; retain them before the library replaces credentials.
@@ -100,18 +96,17 @@ export async function googleAccountStatus(): Promise<GoogleAccountStatus> {
   try {
     const client = await authenticatedClient();
     return {
-      // Older grants must reconnect to use Picker-selected file access.
       needsReconnect: !client.credentials.scope
         ?.split(' ')
         .includes(DRIVE_SCOPE),
-      /* Saved credentials are available; authorization is checked on API calls. */ connected: true,
+      connected: true,
     };
   } catch (cause) {
     if ((cause as NodeJS.ErrnoException).code === 'ENOENT')
       return { /* No saved account. */ connected: false };
     return {
-      /* No usable credentials. */ connected: false,
-      /* Safe setup guidance. */ error:
+      connected: false,
+      error:
         'Google is not connected. Check OAuth configuration and secure storage, then connect again.',
     };
   }
@@ -126,9 +121,7 @@ export async function createDriveClient() {
     );
   }
   return google.drive({
-    // Use the supported Drive API version.
     version: 'v3',
-    // Keep authentication and tokens entirely within the main process.
     auth,
   });
 }
@@ -206,19 +199,12 @@ async function authorizeGoogleAccount(
       );
       const authorizationUrl = new URL(
         client.generateAuthUrl({
-          // Persist offline access for uploads after the browser closes.
           access_type: 'offline',
-          // Explicitly grant access when connecting or choosing another folder.
           prompt: 'consent',
-          // Desktop Picker requires only the per-file scope.
           scope: [DRIVE_SCOPE],
-          // Do not combine legacy broad Drive scopes with this Picker request.
           include_granted_scopes: false,
-          // Bind the callback to this request.
           state,
-          // Protect the authorization code with PKCE.
           code_challenge: codes.codeChallenge,
-          // Use the SHA-256 challenge algorithm.
           code_challenge_method: Auth.CodeChallengeMethod.S256,
         }),
       );
@@ -242,9 +228,7 @@ async function authorizeGoogleAccount(
       const { tokens } = await abortable(
         () =>
           client.getToken({
-            // Exchange only the code from the state-validated callback.
             code: callback.searchParams.get('code')!,
-            // Prove ownership of the original request.
             codeVerifier: codes.codeVerifier,
           }),
         signal,
@@ -257,9 +241,7 @@ async function authorizeGoogleAccount(
       }
       client.setCredentials(tokens);
       const drive = google.drive({
-        // Use Drive v3 to verify the selected destination.
         version: 'v3',
-        // Validate using the newly granted credentials before saving them.
         auth: client,
       });
       let folder: DriveFolder | null = null;
@@ -268,15 +250,11 @@ async function authorizeGoogleAccount(
           () =>
             drive.files.get(
               {
-                // Resolve only the single identifier returned by Picker.
                 fileId: pickedIds!,
-                // Verify the destination really is a writable folder.
                 fields: 'id,name,mimeType,trashed,capabilities(canAddChildren)',
-                // Allow writable shared-drive destinations.
                 supportsAllDrives: true,
               },
               {
-                // Cancel in-flight Drive metadata requests at the authorization deadline.
                 signal,
               },
             ),
@@ -292,9 +270,7 @@ async function authorizeGoogleAccount(
           throw new Error('Please choose a writable Google Drive folder.');
         }
         folder = {
-          // Canonical Drive folder identifier.
           id: data.id,
-          // User-facing folder name, without returning tokens to the renderer.
           name: data.name,
         };
       } else {
@@ -302,11 +278,9 @@ async function authorizeGoogleAccount(
           () =>
             drive.about.get(
               {
-                // Verify the project has Drive API access without listing account files.
                 fields: 'kind',
               },
               {
-                // The connection probe shares the same authorization deadline.
                 signal,
               },
             ),
@@ -320,7 +294,6 @@ async function authorizeGoogleAccount(
       signal.throwIfAborted();
       const temporary = `${tokenPath()}.tmp`;
       await writeFile(temporary, encrypted, {
-        // Restrict the credential file to this user.
         mode: 0o600,
       });
       // Do not commit credentials after a timed-out request; finish local writes while locked.
@@ -347,14 +320,11 @@ export async function connectGoogleAccount(): Promise<GoogleAccountStatus> {
   try {
     await authorizeGoogleAccount(false);
     return {
-      // Authentication and encrypted storage succeeded.
       connected: true,
     };
   } catch {
     return {
-      // Preserve the previous connection and its reconnect requirement on failure.
       ...(await googleAccountStatus()),
-      // Do not expose Google provider responses or credential payloads.
       error:
         'Google sign-in failed or was cancelled. Check Desktop OAuth configuration, Drive API access, and your keyring, then try again.',
     };
@@ -383,11 +353,8 @@ export async function selectDriveFolder(): Promise<DriveFolder | null> {
 export async function disconnectGoogleAccount(): Promise<GoogleAccountStatus> {
   if (connecting)
     return {
-      /* Keep existing state during authorization. */ connected: (
-        await googleAccountStatus()
-      ).connected,
-      /* Avoid credentials being recreated after disconnect. */ error:
-        'Wait for Google sign-in to finish before disconnecting.',
+      connected: (await googleAccountStatus()).connected,
+      error: 'Wait for Google sign-in to finish before disconnecting.',
     };
   // Acquire the account-operation lock before the first asynchronous step.
   connecting = true;
@@ -401,17 +368,15 @@ export async function disconnectGoogleAccount(): Promise<GoogleAccountStatus> {
     revocationClient.transporter.defaults.timeout = 30_000;
     await revocationClient.revokeToken(token);
     await rm(tokenPath(), {
-      /* Missing files are already disconnected. */ force: true,
+      force: true,
     });
     // Invalidate only after deletion so concurrent status reads cannot reload the old file.
     savedClient = undefined;
     return { /* Account is revoked and removed. */ connected: false };
   } catch {
     return {
-      /* Keep credentials so revocation can be retried. */ connected: (
-        await googleAccountStatus()
-      ).connected,
-      /* Explain that revocation did not finish. */ error:
+      connected: (await googleAccountStatus()).connected,
+      error:
         'Could not revoke Google access. Check your connection and try again.',
     };
   } finally {

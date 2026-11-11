@@ -5,12 +5,30 @@ import {
   connectGoogleAccount,
   disconnectGoogleAccount,
   selectDriveFolder,
-} from '../google/account';
+} from '../cloud-storage/google/account';
 import {
   requireDriveFolder,
   uploadDriveFile,
   validateDriveFolderId,
-} from '../google/drive';
+} from '../cloud-storage/google/drive';
+import {
+  oneDriveStatus,
+  connectOneDrive,
+  disconnectOneDrive,
+} from '../cloud-storage/onedrive/account';
+import {
+  listOneDriveFolders,
+  oneDriveFolderUrl,
+} from '../cloud-storage/onedrive/drive';
+import {
+  dropboxStatus,
+  connectDropbox,
+  disconnectDropbox,
+} from '../cloud-storage/dropbox/account';
+import {
+  listDropboxFolders,
+  dropboxFolderUrl,
+} from '../cloud-storage/dropbox/drive';
 import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -21,6 +39,59 @@ import type { DownloadRequest } from './download-types';
 
 // Registers native download and Google account operations for the renderer.
 export function registerIpcHandlers(): void {
+  ipcMain.handle(IPC_CHANNELS.dropboxStatus, dropboxStatus);
+  ipcMain.handle(IPC_CHANNELS.connectDropbox, connectDropbox);
+  ipcMain.handle(IPC_CHANNELS.disconnectDropbox, disconnectDropbox);
+  ipcMain.handle(
+    IPC_CHANNELS.listDropboxFolders,
+    async (_event, folderPath: string, cursor?: string) => {
+      try {
+        return await listDropboxFolders(folderPath, cursor);
+      } catch {
+        throw new Error(
+          'Could not load Dropbox folders. Reconnect Dropbox and try again.',
+        );
+      }
+    },
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.openDropboxFolder,
+    async (_event, folderPath: string) => {
+      try {
+        await shell.openExternal(dropboxFolderUrl(folderPath));
+        return '';
+      } catch {
+        return 'Could not open the Dropbox folder.';
+      }
+    },
+  );
+  ipcMain.handle(IPC_CHANNELS.oneDriveStatus, oneDriveStatus);
+  ipcMain.handle(IPC_CHANNELS.connectOneDrive, connectOneDrive);
+  ipcMain.handle(IPC_CHANNELS.disconnectOneDrive, disconnectOneDrive);
+  ipcMain.handle(
+    IPC_CHANNELS.listOneDriveFolders,
+    async (_event, id: string, nextPage?: string) => {
+      try {
+        return await listOneDriveFolders(id, nextPage);
+      } catch {
+        throw new Error(
+          'Could not load OneDrive folders. Reconnect Microsoft and try again.',
+        );
+      }
+    },
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.openOneDriveFolder,
+    async (_event, id: string) => {
+      try {
+        // Resolve Microsoft's personal or work-account browser link in the main process.
+        await shell.openExternal(await oneDriveFolderUrl(id));
+        return '';
+      } catch {
+        return 'Could not open the OneDrive folder.';
+      }
+    },
+  );
   ipcMain.handle(IPC_CHANNELS.selectDriveFolder, selectDriveFolder);
   ipcMain.handle(IPC_CHANNELS.openDriveFolder, async (_event, id: string) => {
     try {
@@ -51,9 +122,8 @@ export function registerIpcHandlers(): void {
     const id = event.sender.id;
     if (downloads.has(id))
       return {
-        /* Prevent overlapping transfers. */ success: false,
-        /* Actionable busy state. */ error:
-          'A transfer is already in progress.',
+        success: false,
+        error: 'A transfer is already in progress.',
       };
     const owner = BrowserWindow.fromWebContents(event.sender);
     if (!owner) return null;
@@ -62,9 +132,7 @@ export function registerIpcHandlers(): void {
     try {
       await requireDriveFolder(folderId);
       const selected = await dialog.showOpenDialog(owner, {
-        // Require explicit user selection rather than accepting renderer-supplied paths.
         title: 'Select files to upload to Google Drive',
-        // Allow multiple regular files.
         properties: ['openFile', 'multiSelections'],
       });
       if (selected.canceled) return null;
@@ -75,8 +143,8 @@ export function registerIpcHandlers(): void {
       return { /* Every selected file uploaded. */ success: true };
     } catch {
       return {
-        /* Files remain untouched on disk. */ success: false,
-        /* Explain partial success to avoid accidental duplicates. */ error: `Upload failed after ${uploaded} file(s). Check Google access, folder permissions, and storage space. Your original files remain on your computer.`,
+        success: false,
+        error: `Upload failed after ${uploaded} file(s). Check Google access, folder permissions, and storage space. Your original files remain on your computer.`,
       };
     } finally {
       downloads.delete(id);
@@ -107,7 +175,13 @@ export function registerIpcHandlers(): void {
         });
         if (result.success)
           notifyDownloadComplete(
-            request.driveFolderId ? 'Google Drive' : request.folder,
+            request.dropboxFolderPath !== undefined
+              ? 'Dropbox'
+              : request.driveFolderId
+                ? 'Google Drive'
+                : request.oneDriveFolderId
+                  ? 'OneDrive'
+                  : request.folder,
           );
         return result;
       } finally {

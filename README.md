@@ -39,6 +39,27 @@ out of `.env.example`; it is the shared template and should contain placeholders
 4. Copy its client ID and client secret into `.env.local` as `GOOGLE_CLIENT_ID`
    and `GOOGLE_CLIENT_SECRET`.
 
+## OneDrive app registration
+
+1. In [Microsoft Entra](https://entra.microsoft.com/), register an app supporting
+   organizational directories and personal Microsoft accounts.
+2. Add a **Mobile and desktop applications** redirect URI: `http://localhost/callback`.
+3. Add delegated Microsoft Graph permission **Files.ReadWrite**.
+4. Copy the **Application (client) ID** into `.env.local` as `MICROSOFT_CLIENT_ID`.
+   No client secret is needed.
+5. Set `MICROSOFT_TENANT_ID` to `consumers` for personal-only registrations,
+   `organizations` for work/school-only, or `common` for both. Restart development
+   or rebuild after changing these settings.
+
+## Dropbox app setup
+
+1. In the [Dropbox App Console](https://www.dropbox.com/developers/apps), create a
+   scoped app with **Full Dropbox** access to choose existing folders.
+2. Enable `files.metadata.read` and `files.content.write`, and allow public clients
+   (PKCE). Register `http://127.0.0.1:53683/dropbox-callback` as a redirect URI.
+3. Copy the app key to `.env.local` as `DROPBOX_APP_KEY`. Keep `DROPBOX_REDIRECT_URI`
+   identical to the registered callback. No app secret is needed. Restart or rebuild.
+
 ## Install on macOS
 
 Set up `.env.local` as described above, then build on a Mac:

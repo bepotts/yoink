@@ -2,7 +2,7 @@
 
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { GoogleAccountStatus } from '../src/google/types/account-types';
+import type { GoogleAccountStatus } from '../src/cloud-storage/google/types/account-types';
 // Reload the module per test to isolate its in-memory client cache and operation lock.
 let {
   connectGoogleAccount,
@@ -10,131 +10,87 @@ let {
   googleAccountStatus,
   selectDriveFolder,
   createDriveClient,
-} = await import('../src/google/account');
+} = await import('../src/cloud-storage/google/account');
 
 const mocks = vi.hoisted(() => ({
-  // Fake disk storage operations.
   read: vi.fn<() => Promise<Buffer>>(),
-  // Captures encrypted token writes.
   write: vi.fn<(...args: unknown[]) => Promise<void>>(),
-  // Captures atomic credential replacement.
   rename: vi.fn<(...args: unknown[]) => Promise<void>>(),
-  // Captures credential deletion.
   rm: vi.fn<(...args: unknown[]) => Promise<void>>(),
-  // Simulates keyring availability.
   available: vi.fn<() => Promise<boolean>>(),
-  // Simulates encryption.
   encrypt: vi.fn<(text: string) => Promise<Buffer>>(),
-  // Simulates decryption.
   decrypt: vi.fn<(value: Buffer) => Promise<{ result: string }>>(),
-  // Captures browser launches.
   open: vi.fn<(url: string) => Promise<void>>(),
-  // Captures callback request handler.
   callback: undefined as
     | undefined
     | ((request: IncomingMessage, response: ServerResponse) => void),
-  // Captures authorization options.
   authUrl:
     vi.fn<(options: { state: string; [key: string]: unknown }) => string>(),
-  // Simulates the token exchange.
   token:
     vi.fn<
       (
         options: unknown,
       ) => Promise<{ tokens: { refresh_token: string; scope: string } }>
     >(),
-  // Restores credentials on the OAuth client.
   credentials: vi.fn<(tokens: unknown) => void>(),
-  // Simulates remote revocation.
   revoke: vi.fn<(token: string) => Promise<void>>(),
-  // Verifies the granted account can call the Drive API.
   about: vi.fn<() => Promise<object>>(),
-  // Verifies Picker-selected destination metadata.
   folder: vi.fn<(...args: unknown[]) => Promise<{ data: object }>>(),
-  // Controls the saved grant for migration tests.
   savedScope: 'https://www.googleapis.com/auth/drive.file',
-  // Tracks per-client request options for cancellation assertions.
   defaults: [] as Array<{
     // Abort signal supplied to OAuth network requests.
     signal?: AbortSignal;
     // Timeout used for short OAuth endpoints.
     timeout?: number;
   }>,
-  // Captures listener cleanup.
   close: vi.fn<() => void>(),
 }));
 vi.mock('electron', () => ({
-  // Supplies a stable credential location.
   app: {
-    /* Isolated fake user-data directory. */ getPath: () => '/tmp/yoink-test',
+    getPath: () => '/tmp/yoink-test',
   },
-  // Provides the OS encryption boundary.
   safeStorage: {
-    // Controls secure storage availability.
     isAsyncEncryptionAvailable: mocks.available,
-    // Simulates a secure Linux backend.
     getSelectedStorageBackend: () => 'gnome_libsecret',
-    // Encrypts before disk persistence.
     encryptStringAsync: mocks.encrypt,
-    // Decrypts saved credentials.
     decryptStringAsync: mocks.decrypt,
   },
-  // Opens the authorization URL.
   shell: { /* Browser launch stub. */ openExternal: mocks.open },
 }));
 vi.mock('node:fs/promises', () => ({
-  // Reads encrypted tokens.
   readFile: mocks.read,
-  // Writes encrypted tokens.
   writeFile: mocks.write,
-  // Atomically replaces tokens.
   rename: mocks.rename,
-  // Removes revoked credentials.
   rm: mocks.rm,
 }));
 vi.mock('node:http', () => ({
-  // Simulates a loopback listener without binding a real port.
   createServer: (requestHandler: typeof mocks.callback) => {
     mocks.callback = requestHandler;
     return {
-      // Registers listener error handling.
       once: vi.fn<() => void>(),
-      // Immediately completes the loopback bind.
       listen: (_port: number, _host: string, ready: () => void) => ready(),
-      // Supplies the assigned callback port.
       address: () => ({ /* Fake loopback port. */ port: 12345 }),
-      // Stops accepting connections.
       close: mocks.close,
-      // Closes outstanding connections.
       closeAllConnections: vi.fn<() => void>(),
     };
   },
 }));
 vi.mock('googleapis', () => ({
-  // Mirrors the library's PKCE enum.
   Auth: {
-    /* Supported challenge algorithms. */ CodeChallengeMethod: {
-      /* SHA-256. */ S256: 'S256',
+    CodeChallengeMethod: {
+      S256: 'S256',
     },
   },
-  // Exposes only the OAuth client used by the account service.
   google: {
-    // Provides a minimal Drive API capability probe.
     drive: () => ({
-      // Fetches the folder selected by Google's Picker.
       files: {
-        // Validates type and upload permission before persisting a grant.
         get: mocks.folder,
       },
-      // Drive account metadata endpoint.
       about: {
-        // Checks authenticated API access without listing user files.
         get: mocks.about,
       },
     }),
-    // OAuth constructors.
     auth: {
-      // Fake installed-application client.
       OAuth2: class {
         // Records each client independently for deadline assertions.
         constructor() {
@@ -142,9 +98,7 @@ vi.mock('googleapis', () => ({
         }
         // Exposes restored scope metadata as the real OAuth client does.
         credentials = {
-          /* Granted upload and folder browsing scope. */ scope:
-            mocks.savedScope,
-          // Offline credential used even if the access token is expired.
+          scope: mocks.savedScope,
           refresh_token: 'saved',
         };
         // Accepts token-refresh metadata listeners as the real library does.
@@ -160,7 +114,6 @@ vi.mock('googleapis', () => ({
         }
         // Provides request defaults used to abort Google network requests.
         transporter = {
-          // Per-authorization cancellation signal and endpoint timeout.
           defaults: {} as { signal?: AbortSignal; timeout?: number },
         };
         // Revokes the saved refresh credential directly.
@@ -168,9 +121,7 @@ vi.mock('googleapis', () => ({
         // Creates a deterministic PKCE verifier for assertions.
         async generateCodeVerifierAsync() {
           return {
-            // Private verifier used at exchange time.
             codeVerifier: 'verifier',
-            // Public challenge sent to Google.
             codeChallenge: 'challenge',
           };
         }
@@ -183,19 +134,15 @@ vi.mock('googleapis', () => ({
 function callback(query: string): number {
   let status = 200;
   const response = {
-    // Captures callback rejection status.
     writeHead: (code: number) => {
       status = code;
       return response;
     },
-    // Completes the simulated response.
     end: vi.fn<() => void>(),
   };
   mocks.callback!(
     {
-      // Simulates a normal browser redirect.
       method: 'GET',
-      // Uses the expected callback route.
       url: `/oauth2callback?${query}`,
     } as IncomingMessage,
     response as unknown as ServerResponse,
@@ -211,7 +158,7 @@ beforeEach(async () => {
     googleAccountStatus,
     selectDriveFolder,
     createDriveClient,
-  } = await import('../src/google/account'));
+  } = await import('../src/cloud-storage/google/account'));
   vi.resetAllMocks();
   mocks.defaults.length = 0;
   vi.stubGlobal('GOOGLE_CLIENT_ID', 'desktop-client');
@@ -220,43 +167,32 @@ beforeEach(async () => {
   mocks.about.mockResolvedValue({});
   mocks.savedScope = 'https://www.googleapis.com/auth/drive.file';
   mocks.folder.mockResolvedValue({
-    // A verified writable destination selected in the browser.
     data: {
-      // Real Drive ID returned from the API.
       id: 'picked-folder',
-      // Human-readable destination.
       name: 'Videos',
-      // Folder-only selection is enforced again in the main process.
       mimeType: 'application/vnd.google-apps.folder',
-      // Upload permission must be present.
       capabilities: {
-        // Can add uploaded files here.
         canAddChildren: true,
       },
     },
   });
   mocks.read.mockRejectedValue(
     Object.assign(new Error('missing'), {
-      /* Missing saved account. */ code: 'ENOENT',
+      code: 'ENOENT',
     }),
   );
   mocks.encrypt.mockResolvedValue(Buffer.from('encrypted'));
   mocks.decrypt.mockResolvedValue({
-    /* Saved credentials decrypted only in main. */ result: JSON.stringify({
-      // Persisted grant used by the restored OAuth client.
+    result: JSON.stringify({
       scope: mocks.savedScope,
-      // A saved offline credential.
       refresh_token: 'saved',
-      // An expired token must never be used for disconnect.
       access_token: 'expired-access',
-      // Expired before this test starts.
       expiry_date: 1,
     }),
   });
   mocks.token.mockResolvedValue({
-    /* Google-issued tokens. */ tokens: {
-      /* Offline access credential. */ refresh_token: 'private-token',
-      // Upload and folder browsing grant returned by Google.
+    tokens: {
+      refresh_token: 'private-token',
       scope: 'https://www.googleapis.com/auth/drive.file',
     },
   });
@@ -271,19 +207,17 @@ test('validates state before exchanging a code and stores only encrypted tokens'
     expect(callback(`state=${state}&code=valid`)).toBe(200);
   });
   await expect(connectGoogleAccount()).resolves.toEqual({
-    /* Connection succeeded. */ connected: true,
+    connected: true,
   });
   expect(mocks.authUrl).toHaveBeenCalledWith(
     expect.objectContaining({
-      // Enforces PKCE.
       code_challenge_method: 'S256',
-      // Requests access only to Picker-selected files.
       scope: ['https://www.googleapis.com/auth/drive.file'],
     }),
   );
   expect(mocks.token).toHaveBeenCalledWith({
-    /* Validated code. */ code: 'valid',
-    /* Original PKCE verifier. */ codeVerifier: 'verifier',
+    code: 'valid',
+    codeVerifier: 'verifier',
   });
   expect(mocks.write).toHaveBeenCalledWith(
     '/tmp/yoink-test/google-account.enc.tmp',
@@ -313,12 +247,11 @@ test('handles denied consent and closes the callback listener', async () => {
 test('returns saved status without exposing tokens and revokes before deleting', async () => {
   mocks.read.mockResolvedValue(Buffer.from('encrypted'));
   await expect(googleAccountStatus()).resolves.toEqual({
-    /* Safe status only. */ connected: true,
-    // Current upload scope is already granted.
+    connected: true,
     needsReconnect: false,
   });
   await expect(disconnectGoogleAccount()).resolves.toEqual({
-    /* Account removed. */ connected: false,
+    connected: false,
   });
   expect(mocks.revoke).toHaveBeenCalledExactlyOnceWith('saved');
   expect(mocks.rm).toHaveBeenCalledOnce();
@@ -348,11 +281,8 @@ test('does not save a grant without upload permissions', async () => {
     callback(`state=${state}&code=valid`);
   });
   mocks.token.mockResolvedValue({
-    // Consent response without the requested upload permission.
     tokens: {
-      // Refresh credential must not be saved for an insufficient grant.
       refresh_token: 'private-token',
-      // Old read-only authorization cannot upload.
       scope: 'https://www.googleapis.com/auth/drive.readonly',
     },
   });
@@ -377,26 +307,20 @@ test('opens Google Picker for a single folder and verifies the returned ID', asy
     callback(`state=${state}&code=valid&picked_file_ids=picked-folder`);
   });
   await expect(selectDriveFolder()).resolves.toEqual({
-    // Verified ID rather than a renderer-supplied path.
     id: 'picked-folder',
-    // Verified name returned from the API.
     name: 'Videos',
   });
   expect(mocks.authUrl).toHaveBeenCalledWith(
     expect.objectContaining({
-      // Desktop Picker must not combine scopes from the legacy grant.
       include_granted_scopes: false,
-      // Use the sole scope supported by Google's native Picker flow.
       scope: ['https://www.googleapis.com/auth/drive.file'],
     }),
   );
   expect(mocks.folder).toHaveBeenCalledWith(
     expect.objectContaining({
-      // Verify the folder selected by Google before saving tokens.
       fileId: 'picked-folder',
     }),
     expect.objectContaining({
-      // Metadata requests share the authorization deadline.
       signal: expect.any(AbortSignal),
     }),
   );
@@ -439,13 +363,9 @@ test('rejects a selected non-folder without replacing saved credentials', async 
     callback(`state=${state}&code=valid&picked_file_ids=not-a-folder`);
   });
   mocks.folder.mockResolvedValue({
-    // The returned ID must resolve to a folder regardless of Picker filtering.
     data: {
-      // A file ID cannot be used as an upload destination.
       id: 'not-a-folder',
-      // An ordinary video file.
       name: 'video.mp4',
-      // Unsupported destination type.
       mimeType: 'video/mp4',
     },
   });
@@ -456,11 +376,8 @@ test('rejects a selected non-folder without replacing saved credentials', async 
 test('legacy broad grants require reconnecting to per-file Picker access', async () => {
   mocks.read.mockResolvedValue(Buffer.from('encrypted'));
   mocks.decrypt.mockResolvedValue({
-    // A legacy broad grant must still require reconnecting.
     result: JSON.stringify({
-      // Old scope lacking Picker-specific access.
       scope: 'https://www.googleapis.com/auth/drive',
-      // Offline credential retained during migration.
       refresh_token: 'saved',
     }),
   });
@@ -490,9 +407,7 @@ function deferred<T>() {
     resolve = complete;
   });
   return {
-    // Response that remains pending until the test releases it.
     promise,
-    // Completes the synthetic request after checking the concurrent behavior.
     resolve,
   };
 }
@@ -511,14 +426,12 @@ test('disconnect locks out sign-in, Picker, and a second disconnect before delet
   expect(mocks.rm).not.toHaveBeenCalled();
   revocation.resolve();
   await expect(pending).resolves.toEqual({
-    // The lock holder completed the only revocation and deletion.
     connected: false,
   });
   expect(mocks.revoke).toHaveBeenCalledOnce();
   expect(mocks.rm).toHaveBeenCalledOnce();
   mocks.read.mockRejectedValue(
     Object.assign(new Error('missing'), {
-      // Subsequent status must reload instead of returning the cached account.
       code: 'ENOENT',
     }),
   );
@@ -532,7 +445,6 @@ test('failed disconnect releases its lock and preserves the usable account cache
   expect((await googleAccountStatus()).connected).toBe(true);
   expect(mocks.rm).not.toHaveBeenCalled();
   await expect(disconnectGoogleAccount()).resolves.toEqual({
-    // A retry must be permitted after the failure.
     connected: false,
   });
 });
@@ -543,11 +455,8 @@ test.each(['token', 'folder', 'about'] as const)(
     vi.useFakeTimers();
     try {
       const tokenResponse = {
-        // Synthetic credentials must never be committed by a late request.
         tokens: {
-          // Offline credential used only by this test.
           refresh_token: 'late-refresh',
-          // Requested Picker grant.
           scope: 'https://www.googleapis.com/auth/drive.file',
         },
       };
@@ -583,17 +492,11 @@ test.each(['token', 'folder', 'about'] as const)(
       expect(mocks.close).toHaveBeenCalledOnce();
       tokenDelay.resolve(tokenResponse);
       folderDelay.resolve({
-        // Even a valid folder arriving late cannot authorize persistence.
         data: {
-          // Destination ID.
           id: 'late-folder',
-          // Destination name.
           name: 'Late folder',
-          // A genuine folder type.
           mimeType: 'application/vnd.google-apps.folder',
-          // Writable destination.
           capabilities: {
-            // Uploading would normally be allowed.
             canAddChildren: true,
           },
         },
@@ -604,7 +507,6 @@ test.each(['token', 'folder', 'about'] as const)(
       expect(mocks.rename).not.toHaveBeenCalled();
       // Cleanup must release the lock so another attempt succeeds immediately.
       await expect(connectGoogleAccount()).resolves.toEqual({
-        // New authorization succeeds after the timed-out one.
         connected: true,
       });
       expect(mocks.write).toHaveBeenCalledOnce();

@@ -2,45 +2,35 @@
 
 import { beforeEach, expect, test, vi } from 'vitest';
 import { PassThrough } from 'node:stream';
-import { requireDriveFolder, uploadDriveFile } from '../src/google/drive';
+import {
+  requireDriveFolder,
+  uploadDriveFile,
+} from '../src/cloud-storage/google/drive';
 
 const mocks = vi.hoisted(() => ({
-  // Returns folder metadata.
   get: vi.fn<(...args: unknown[]) => Promise<{ data: object }>>(),
-  // Acknowledges a new uploaded file.
   create: vi.fn<(...args: unknown[]) => Promise<object>>(),
-  // Supplies source data without accessing real files.
   stream: vi.fn<(...args: unknown[]) => unknown>(),
 }));
-vi.mock('../src/google/account', () => ({
-  // Restricts these tests to Drive behavior.
+vi.mock('../src/cloud-storage/google/account', () => ({
   createDriveClient: async () => ({
-    // Drive file endpoints used by the uploader.
     files: {
-      // Folder permission endpoint.
       get: mocks.get,
-      // File upload endpoint.
       create: mocks.create,
     },
   }),
 }));
 vi.mock('node:fs', () => ({
-  // Streams a test buffer instead of a local file.
   createReadStream: mocks.stream,
 }));
 
 beforeEach(() => {
   vi.resetAllMocks();
   mocks.get.mockResolvedValue({
-    // Writable Drive folder fixture.
     data: {
-      // Canonical folder ID.
       id: 'folder-1',
-      // Folder display name.
       name: 'Videos',
-      // Drive folder MIME type.
       mimeType: 'application/vnd.google-apps.folder',
-      // Upload permission.
       capabilities: { /* Can create files here. */ canAddChildren: true },
     },
   });
@@ -50,8 +40,8 @@ beforeEach(() => {
 
 test('rejects a file or read-only folder as a destination', async () => {
   mocks.get.mockResolvedValue({
-    /* Metadata for an ordinary file. */ data: {
-      /* Not a folder. */ mimeType: 'video/mp4',
+    data: {
+      mimeType: 'video/mp4',
     },
   });
   await expect(requireDriveFolder('file-1')).rejects.toThrow(
@@ -63,12 +53,10 @@ test('streams into the chosen folder and never updates an existing file', async 
   await uploadDriveFile('/tmp/video.mp4', 'folder-1');
   expect(mocks.create).toHaveBeenCalledWith(
     expect.objectContaining({
-      // New-file metadata, rather than an update to an existing file.
       requestBody: {
-        /* Preserve the filename. */ name: 'video.mp4',
-        /* Explicit destination. */ parents: ['folder-1'],
+        name: 'video.mp4',
+        parents: ['folder-1'],
       },
-      // Shared drives are supported.
       supportsAllDrives: true,
     }),
     { /* Avoid duplicate create retries. */ retry: false },

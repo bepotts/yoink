@@ -4,7 +4,18 @@ import { execFile } from 'node:child_process';
 import { access, stat, mkdtemp, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
-import { requireDriveFolder, uploadDriveFile } from '../google/drive';
+import {
+  requireDropboxFolder,
+  uploadDropboxFile,
+} from '../cloud-storage/dropbox/drive';
+import {
+  requireOneDriveFolder,
+  uploadOneDriveFile,
+} from '../cloud-storage/onedrive/drive';
+import {
+  requireDriveFolder,
+  uploadDriveFile,
+} from '../cloud-storage/google/drive';
 import { constants } from 'node:fs';
 import { promisify } from 'node:util';
 import { createInterface } from 'node:readline';
@@ -27,8 +38,20 @@ export async function downloadVideo(
   const error = validateDownload(request);
   if (error) return { success: false, error };
 
+  const cloud =
+    request.dropboxFolderPath !== undefined
+      ? 'Dropbox'
+      : request.driveFolderId
+        ? 'Google Drive'
+        : request.oneDriveFolderId
+          ? 'OneDrive'
+          : null;
   try {
-    if (request.driveFolderId) {
+    if (request.dropboxFolderPath !== undefined) {
+      await requireDropboxFolder(request.dropboxFolderPath);
+    } else if (request.oneDriveFolderId) {
+      await requireOneDriveFolder(request.oneDriveFolderId);
+    } else if (request.driveFolderId) {
       await requireDriveFolder(request.driveFolderId);
     } else {
       if (!(await stat(request.folder)).isDirectory()) throw new Error();
@@ -37,8 +60,8 @@ export async function downloadVideo(
   } catch {
     return {
       success: false,
-      error: request.driveFolderId
-        ? 'The Google Drive folder is unavailable. Reconnect Google and select a writable folder.'
+      error: cloud
+        ? `The ${cloud} folder is unavailable. Reconnect the account and select a writable folder.`
         : 'The selected folder is unavailable or not writable. Please select another folder.',
     };
   }
@@ -55,7 +78,7 @@ export async function downloadVideo(
   try {
     // Download separately so yt-dlp never skips or overwrites an existing video.
     stagingFolder = await mkdtemp(
-      path.join(request.driveFolderId ? tmpdir() : request.folder, '.yoink-'),
+      path.join(cloud ? tmpdir() : request.folder, '.yoink-'),
     );
     const download = run(
       'yt-dlp',
@@ -90,18 +113,32 @@ export async function downloadVideo(
     const files = await readdir(stagingFolder, { withFileTypes: true });
     if (!files.some((file) => file.isFile()))
       throw new Error('No downloaded file was produced.');
-    if (request.driveFolderId) {
+    if (cloud) {
       uploading = true;
       onProgress({
-        // Upload only after yt-dlp has finalized the files.
         phase: 'uploading',
-        // Stream uploads show an indeterminate indicator.
         percent: null,
       });
     }
     for (const file of files) {
       if (file.isFile()) {
-        if (request.driveFolderId) {
+        if (request.dropboxFolderPath !== undefined) {
+          await uploadDropboxFile(
+            path.join(stagingFolder, file.name),
+            request.dropboxFolderPath,
+            (percent) => onProgress({ phase: 'uploading', percent }),
+          );
+        } else if (request.oneDriveFolderId) {
+          await uploadOneDriveFile(
+            path.join(stagingFolder, file.name),
+            request.oneDriveFolderId,
+            (percent) =>
+              onProgress({
+                phase: 'uploading',
+                percent,
+              }),
+          );
+        } else if (request.driveFolderId) {
           await uploadDriveFile(
             path.join(stagingFolder, file.name),
             request.driveFolderId,
@@ -119,10 +156,8 @@ export async function downloadVideo(
     if (uploading) {
       keepRecoveryCopy = true;
       return {
-        // Report partial upload failure without removing the downloaded files.
         success: false,
-        // Preserve an actionable recovery location; already uploaded files may remain in Drive.
-        error: `Google Drive upload failed. Check your connection, storage space, and folder permissions. Downloaded files are kept at ${stagingFolder}. Some files may already have uploaded.`,
+        error: `${cloud} upload failed. Check your connection, storage space, and folder permissions. Downloaded files are kept at ${stagingFolder}. Some files may already have uploaded.`,
       };
     }
     const failure = cause as { code?: string; stderr?: string };
