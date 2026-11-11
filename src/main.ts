@@ -1,6 +1,7 @@
 // Manages Electron windows and initializes IPC handlers.
 
 import { app, BrowserWindow } from 'electron';
+import log from 'electron-log/main';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 import { registerIpcHandlers } from './ipc/handlers';
@@ -11,12 +12,15 @@ if (started) {
 }
 
 app.setName('Yoink');
+setupLogging();
 
 const iconPath = app.isPackaged
   ? path.join(process.resourcesPath, 'icon.png')
   : path.join(app.getAppPath(), 'assets/icon.png');
 
+// Creates the main window and records loading and renderer failures.
 const createWindow = () => {
+  log.info('Creating main window');
   // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 800,
@@ -27,7 +31,9 @@ const createWindow = () => {
     },
   });
 
-  // and load the index.html of the app.
+  registerWindowErrorHandlers(mainWindow);
+
+  // Load the development server or packaged application.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
     // Open the DevTools during development only.
@@ -43,6 +49,7 @@ const createWindow = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
+  log.info('Application ready');
   app.dock?.setIcon(iconPath);
   registerIpcHandlers();
 
@@ -66,5 +73,45 @@ app.on('window-all-closed', () => {
   }
 });
 
+/**  Below this point are function definitions */
+
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and import them here.
+
+// Configures log transports, error capture, and application lifecycle diagnostics.
+function setupLogging(): void {
+  log.transports.file.level = 'info';
+  log.transports.file.maxSize = 5 * 1024 * 1024;
+  log.transports.console.level = app.isPackaged ? 'warn' : 'debug';
+  log.initialize();
+  log.errorHandler.startCatching({ showDialog: false });
+  log.info('Application starting', {
+    version: app.getVersion(),
+    platform: process.platform,
+    electron: process.versions.electron,
+  });
+
+  app.on('before-quit', () => log.info('Application quitting'));
+  app.on('child-process-gone', (_event, details) => {
+    log.error(
+      'Child process exited',
+      details.type,
+      details.reason,
+      details.exitCode,
+    );
+  });
+}
+
+// Registers diagnostics for renderer crashes, preload failures, loading errors, and hangs.
+function registerWindowErrorHandlers(mainWindow: BrowserWindow): void {
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    log.error('Renderer exited', details.reason, details.exitCode);
+  });
+  mainWindow.webContents.on('preload-error', (_event, _preloadPath, error) => {
+    log.error('Preload failed', error);
+  });
+  mainWindow.webContents.on('did-fail-load', (_event, code, description) => {
+    log.error('Window failed to load', code, description);
+  });
+  mainWindow.on('unresponsive', () => log.warn('Main window is unresponsive'));
+}

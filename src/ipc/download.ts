@@ -1,5 +1,6 @@
 // Validates the destination and runs yt-dlp to download a video, reporting failures.
 
+import log from 'electron-log/main';
 import { execFile } from 'node:child_process';
 import { access, stat, mkdtemp, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
@@ -36,7 +37,10 @@ export async function downloadVideo(
   onProgress: (progress: DownloadProgress) => void = () => {},
 ): Promise<DownloadResult> {
   const error = validateDownload(request);
-  if (error) return { success: false, error };
+  if (error) {
+    log.warn('Download rejected', error);
+    return { success: false, error };
+  }
 
   const cloud =
     request.dropboxFolderPath !== undefined
@@ -46,6 +50,7 @@ export async function downloadVideo(
         : request.oneDriveFolderId
           ? 'OneDrive'
           : null;
+  log.info('Download started', { destination: cloud ?? 'local' });
   try {
     if (request.dropboxFolderPath !== undefined) {
       await requireDropboxFolder(request.dropboxFolderPath);
@@ -58,6 +63,9 @@ export async function downloadVideo(
       await access(request.folder, constants.W_OK);
     }
   } catch {
+    log.warn('Download destination unavailable', {
+      destination: cloud ?? 'local',
+    });
     return {
       success: false,
       error: cloud
@@ -151,8 +159,17 @@ export async function downloadVideo(
         }
       }
     }
+    log.info('Download completed', { destination: cloud ?? 'local' });
     return { success: true };
   } catch (cause) {
+    // Avoid logging provider errors or yt-dlp arguments containing credentials and URLs.
+    log.error(uploading ? 'Cloud upload failed' : 'Download failed', {
+      destination: cloud ?? 'local',
+      code:
+        typeof (cause as NodeJS.ErrnoException)?.code === 'string'
+          ? (cause as NodeJS.ErrnoException).code
+          : undefined,
+    });
     if (uploading) {
       keepRecoveryCopy = true;
       return {
@@ -171,11 +188,9 @@ export async function downloadVideo(
     };
   } finally {
     if (stagingFolder && !keepRecoveryCopy) {
-      await rm(stagingFolder, { recursive: true, force: true }).catch(
-        (cause) => {
-          console.warn('Could not clean up download temporary files:', cause);
-        },
-      );
+      await rm(stagingFolder, { recursive: true, force: true }).catch(() => {
+        log.warn('Could not clean up download temporary files');
+      });
     }
   }
 }

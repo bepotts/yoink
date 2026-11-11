@@ -30,7 +30,12 @@ export default defineConfig(({ mode }) => {
       // Avoid bundling every Google API into the main-process output.
       rollupOptions: {
         // Electron Forge packages production node_modules for runtime resolution.
-        external: ['googleapis', '@azure/msal-node', 'dropbox'],
+        external: [
+          'googleapis',
+          '@azure/msal-node',
+          'dropbox',
+          'electron-log/main',
+        ],
       },
     },
   };
