@@ -4,6 +4,7 @@ import { app, BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
+import { setupMonitoring } from './monitoring/main';
 import { registerIpcHandlers } from './ipc/handlers';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -12,6 +13,7 @@ if (started) {
 }
 
 app.setName('Yoink');
+setupMonitoring();
 setupLogging();
 
 const iconPath = app.isPackaged

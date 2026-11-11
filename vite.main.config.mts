@@ -8,10 +8,12 @@ export default defineConfig(({ mode }) => {
     'GOOGLE_',
     'MICROSOFT_',
     'DROPBOX_',
+    'SENTRY_DSN',
   ]);
   return {
     // Desktop OAuth client identifiers are public app configuration, never user tokens.
     define: {
+      SENTRY_DSN: JSON.stringify(env.SENTRY_DSN ?? ''),
       DROPBOX_APP_KEY: JSON.stringify(env.DROPBOX_APP_KEY ?? ''),
       DROPBOX_REDIRECT_URI: JSON.stringify(
         env.DROPBOX_REDIRECT_URI || 'http://127.0.0.1:53683/dropbox-callback',
@@ -27,6 +29,7 @@ export default defineConfig(({ mode }) => {
     },
     // Keep the large Google API library as a production runtime dependency.
     build: {
+      sourcemap: true,
       // Avoid bundling every Google API into the main-process output.
       rollupOptions: {
         // Electron Forge packages production node_modules for runtime resolution.
@@ -35,6 +38,7 @@ export default defineConfig(({ mode }) => {
           '@azure/msal-node',
           'dropbox',
           'electron-log/main',
+          '@sentry/electron/main',
         ],
       },
     },

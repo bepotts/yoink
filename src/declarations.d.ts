@@ -1,6 +1,7 @@
 // Declares Vite globals, CSS imports, and the preload API available on window.
 
 /// <reference types="@electron-forge/plugin-vite/forge-vite-env" />
+/// <reference types="vite/client" />
 declare module '*.css';
 
 interface Window {
@@ -99,3 +100,9 @@ declare const MICROSOFT_TENANT_ID: string;
 declare const DROPBOX_APP_KEY: string;
 // Exact registered IPv4 loopback callback used by Dropbox authorization.
 declare const DROPBOX_REDIRECT_URI: string;
+
+// Public Sentry ingestion DSN injected into the main build; never an authentication token.
+declare const SENTRY_DSN: string;
+
+// Enables renderer instrumentation when the main process has a configured DSN.
+declare const SENTRY_ENABLED: boolean;
