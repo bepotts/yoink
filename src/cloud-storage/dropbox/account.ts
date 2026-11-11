@@ -3,7 +3,7 @@
 import { app, safeStorage, shell } from 'electron';
 import { createServer } from 'node:http';
 import { randomBytes } from 'node:crypto';
-import { Dropbox, DropboxAuth } from 'dropbox';
+import { Dropbox, DropboxAuth, DropboxResponseError } from 'dropbox';
 import { dropboxFetch } from './transport';
 import { readFile, writeFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
@@ -281,16 +281,35 @@ export async function connectDropbox(): Promise<DropboxStatus> {
   });
 }
 
-// Revokes the app's Dropbox token before deleting encrypted local credentials.
+// Recognizes rejected grants without treating temporary failures or missing scopes as revocation.
+function isRevokedGrant(error: unknown): boolean {
+  if (!(error instanceof DropboxResponseError)) return false;
+  const body: unknown = error.error;
+  if (!body || typeof body !== 'object' || !('error' in body)) return false;
+  if (error.status === 400 && body.error === 'invalid_grant') return true;
+  return (
+    error.status === 401 &&
+    typeof body.error === 'object' &&
+    body.error !== null &&
+    '.tag' in body.error &&
+    body.error['.tag'] === 'invalid_access_token'
+  );
+}
+
+// Revokes the Dropbox grant, or forgets an already revoked grant, before clearing local credentials.
 export async function disconnectDropbox(): Promise<DropboxStatus> {
   return serialized(async () => {
     try {
-      // Use a fresh access token, including after the originally saved access token expires.
-      const client = new Dropbox({
-        accessToken: await freshToken(),
-        fetch: dropboxFetch(30_000),
-      });
-      await client.authTokenRevoke();
+      try {
+        // Use a fresh access token, including after the originally saved access token expires.
+        const client = new Dropbox({
+          accessToken: await freshToken(),
+          fetch: dropboxFetch(30_000),
+        });
+        await client.authTokenRevoke();
+      } catch (error) {
+        if (!isRevokedGrant(error)) throw error;
+      }
       await rm(tokenPath(), { force: true });
       tokens = undefined;
       return { connected: false };

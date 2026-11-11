@@ -181,6 +181,69 @@ test('refreshes before revocation and keeps credentials when revocation fails', 
   expect(mocks.rm).toHaveBeenCalledOnce();
 });
 
+test.each([
+  [400, { error: 'invalid_grant' }],
+  [401, { error: { '.tag': 'invalid_access_token' } }],
+])(
+  'forgets a revoked grant (%s) and permits a fresh browser sign-in',
+  async (status, body) => {
+    const { disconnectDropbox, dropboxStatus, connectDropbox } =
+      await import('../src/cloud-storage/dropbox/account');
+    mocks.read.mockResolvedValue(Buffer.from('encrypted'));
+    if (status === 401) {
+      mocks.fetch.mockResolvedValueOnce(
+        Response.json({ access_token: 'fresh-access', expires_in: 14400 }),
+      );
+    }
+    mocks.fetch.mockResolvedValueOnce(Response.json(body, { status }));
+    mocks.rm.mockImplementation(async () => {
+      mocks.read.mockRejectedValue(new Error('no saved account'));
+    });
+    expect(await disconnectDropbox()).toEqual({ connected: false });
+    expect(mocks.rm).toHaveBeenCalledExactlyOnceWith(
+      '/tmp/yoink-dropbox-tests/dropbox-account.enc',
+      { force: true },
+    );
+    expect(await dropboxStatus()).toEqual({ connected: false });
+    vi.resetModules();
+    expect(
+      await (
+        await import('../src/cloud-storage/dropbox/account')
+      ).dropboxStatus(),
+    ).toEqual({ connected: false });
+    mocks.browser.mockImplementation(async (link) => {
+      callback(new URL(link).searchParams.get('state')!, 'code=valid');
+    });
+    mocks.fetch.mockResolvedValueOnce(
+      Response.json({
+        access_token: 'replacement-access',
+        refresh_token: 'replacement-refresh',
+        expires_in: 14400,
+      }),
+    );
+    expect(await connectDropbox()).toEqual({ connected: true });
+  },
+);
+
+test.each([
+  new TypeError('Failed to fetch'),
+  Response.json({ error: 'invalid_client' }, { status: 400 }),
+  Response.json({ error: { '.tag': 'missing_scope' } }, { status: 401 }),
+  Response.json({ error: 'invalid_grant' }, { status: 500 }),
+])(
+  'retains credentials for failures that do not prove grant revocation',
+  async (failure) => {
+    const { disconnectDropbox, dropboxStatus } =
+      await import('../src/cloud-storage/dropbox/account');
+    mocks.read.mockResolvedValue(Buffer.from('encrypted'));
+    if (failure instanceof Response) mocks.fetch.mockResolvedValueOnce(failure);
+    else mocks.fetch.mockRejectedValueOnce(failure);
+    expect((await disconnectDropbox()).error).toBeTruthy();
+    expect(mocks.rm).not.toHaveBeenCalled();
+    expect(await dropboxStatus()).toEqual({ connected: true });
+  },
+);
+
 test('does not open a browser without secure credential storage', async () => {
   const { connectDropbox } =
     await import('../src/cloud-storage/dropbox/account');
