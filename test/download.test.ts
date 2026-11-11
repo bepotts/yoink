@@ -1,6 +1,7 @@
 // Tests download validation, yt-dlp arguments, destination checks, and failure messages.
 
 import { beforeEach, expect, test, vi } from 'vitest';
+import log from 'electron-log/main';
 import { downloadVideo } from '../src/ipc/download';
 import type { ExecFileOptions } from 'node:child_process';
 import { PassThrough } from 'node:stream';
@@ -38,6 +39,13 @@ vi.mock('../src/cloud-storage/onedrive/drive', () => ({
 vi.mock('../src/cloud-storage/google/drive', () => ({
   requireDriveFolder: mocks.driveFolder,
   uploadDriveFile: mocks.upload,
+}));
+vi.mock('electron-log/main', () => ({
+  default: {
+    info: vi.fn<() => void>(),
+    warn: vi.fn<() => void>(),
+    error: vi.fn<() => void>(),
+  },
 }));
 vi.mock('node:child_process', () => ({ execFile: mocks.run }));
 vi.mock('node:util', () => ({ promisify: () => mocks.run }));
@@ -333,4 +341,25 @@ test('rejects Dropbox combined with another destination before downloading', asy
     }),
   ).toMatchObject({ success: false });
   expect(mocks.run).not.toHaveBeenCalled();
+});
+
+// Ensures download failures produce diagnostics without leaking request or provider secrets.
+test('logs transfer failures without sensitive URLs or provider payloads', async () => {
+  const secret = 'https://example.com/video?token=private';
+  mocks.run.mockRejectedValue({
+    code: 'ENOENT',
+    stderr: secret,
+    token: 'private',
+  });
+  await downloadVideo({ link: secret, folder: '/tmp/private-folder' });
+  expect(log.info).toHaveBeenCalledWith('Download started', {
+    destination: 'local',
+  });
+  expect(log.error).toHaveBeenCalledWith('Download failed', {
+    destination: 'local',
+    code: 'ENOENT',
+  });
+  expect(JSON.stringify(vi.mocked(log.error).mock.calls)).not.toContain(
+    'private',
+  );
 });

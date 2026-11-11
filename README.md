@@ -60,6 +60,13 @@ out of `.env.example`; it is the shared template and should contain placeholders
 3. Copy the app key to `.env.local` as `DROPBOX_APP_KEY`. Keep `DROPBOX_REDIRECT_URI`
    identical to the registered callback. No app secret is needed. Restart or rebuild.
 
+## Sentry
+
+Set `SENTRY_DSN` in `.env.local` to enable error reporting, tracing, and remote logs.
+For release builds, run `npx sentry auth login`, then set
+`SENTRY_UPLOAD_SOURCEMAPS=1` before `npm run make:mac` to upload readable stack traces.
+Keep the DSN configured when rebuilding; authentication credentials stay in the CLI.
+
 ## Install on macOS
 
 Set up `.env.local` as described above, then build on a Mac:

@@ -1,5 +1,8 @@
 // Configures Electron packaging, installers, Vite builds, and security fuses.
 
+import { execFile } from 'node:child_process';
+import path from 'node:path';
+import { promisify } from 'node:util';
 import { existsSync } from 'node:fs';
 import { loadEnvFile } from 'node:process';
 import type { ForgeConfig } from '@electron-forge/shared-types';
@@ -30,6 +33,23 @@ const config: ForgeConfig = {
     extraResource: ['assets/icon.png'],
   },
   rebuildConfig: {},
+  hooks: {
+    packageAfterCopy: async (_config, buildPath) => {
+      // Upload and inject debug IDs before the application is archived and signed.
+      if (process.env.SENTRY_UPLOAD_SOURCEMAPS !== '1') return;
+      await promisify(execFile)(
+        'sentry',
+        ['sourcemap', 'upload', path.join(buildPath, '.vite')],
+        {
+          env: {
+            ...process.env,
+            SENTRY_ORG: 'pottsprojects',
+            SENTRY_PROJECT: 'yoink',
+          },
+        },
+      );
+    },
+  },
   makers: [
     new MakerSquirrel({ setupIcon: 'assets/icon.ico' }),
     new MakerZIP({}, ['darwin']),

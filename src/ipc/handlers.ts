@@ -1,5 +1,6 @@
 // Registers the main-process IPC handlers.
 
+import log from 'electron-log/main';
 import {
   googleAccountStatus,
   connectGoogleAccount,
@@ -48,6 +49,7 @@ export function registerIpcHandlers(): void {
       try {
         return await listDropboxFolders(folderPath, cursor);
       } catch {
+        log.warn('Could not load Dropbox folders');
         throw new Error(
           'Could not load Dropbox folders. Reconnect Dropbox and try again.',
         );
@@ -61,6 +63,7 @@ export function registerIpcHandlers(): void {
         await shell.openExternal(dropboxFolderUrl(folderPath));
         return '';
       } catch {
+        log.warn('Could not open the Dropbox folder');
         return 'Could not open the Dropbox folder.';
       }
     },
@@ -74,6 +77,7 @@ export function registerIpcHandlers(): void {
       try {
         return await listOneDriveFolders(id, nextPage);
       } catch {
+        log.warn('Could not load OneDrive folders');
         throw new Error(
           'Could not load OneDrive folders. Reconnect Microsoft and try again.',
         );
@@ -88,6 +92,7 @@ export function registerIpcHandlers(): void {
         await shell.openExternal(await oneDriveFolderUrl(id));
         return '';
       } catch {
+        log.warn('Could not open the OneDrive folder');
         return 'Could not open the OneDrive folder.';
       }
     },
@@ -99,6 +104,7 @@ export function registerIpcHandlers(): void {
       await shell.openExternal(`https://drive.google.com/drive/folders/${id}`);
       return '';
     } catch {
+      log.warn('Could not open the Google Drive folder');
       return 'Could not open the Google Drive folder.';
     }
   });
@@ -114,6 +120,7 @@ export function registerIpcHandlers(): void {
         return 'The download folder is no longer available.';
       return await shell.openPath(folder);
     } catch {
+      log.warn('Could not open the download folder');
       return 'Could not open the download folder. It may have been moved or deleted.';
     }
   });
@@ -136,12 +143,17 @@ export function registerIpcHandlers(): void {
         properties: ['openFile', 'multiSelections'],
       });
       if (selected.canceled) return null;
+      log.info('Google Drive upload started', {
+        count: selected.filePaths.length,
+      });
       for (const file of selected.filePaths) {
         await uploadDriveFile(file, folderId);
         uploaded++;
       }
-      return { /* Every selected file uploaded. */ success: true };
+      log.info('Google Drive upload completed', { uploaded });
+      return { success: true };
     } catch {
+      log.error('Google Drive upload failed', { uploaded });
       return {
         success: false,
         error: `Upload failed after ${uploaded} file(s). Check Google access, folder permissions, and storage space. Your original files remain on your computer.`,
