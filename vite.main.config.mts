@@ -2,17 +2,21 @@
 
 import { defineConfig, loadEnv } from 'vite';
 
-// Loads only the desktop OAuth configuration into the main-process bundle.
+// Loads desktop OAuth identifiers and the backend URL into the main-process bundle.
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), [
+    'YOINK_BACKEND_URL',
     'GOOGLE_',
     'MICROSOFT_',
     'DROPBOX_',
     'SENTRY_DSN',
   ]);
   return {
-    // Desktop OAuth client identifiers are public app configuration, never user tokens.
+    // Bundles public app configuration without user tokens or AWS credentials.
     define: {
+      YOINK_BACKEND_URL: JSON.stringify(
+        env.YOINK_BACKEND_URL || 'http://127.0.0.1:8000',
+      ),
       SENTRY_DSN: JSON.stringify(env.SENTRY_DSN ?? ''),
       DROPBOX_APP_KEY: JSON.stringify(env.DROPBOX_APP_KEY ?? ''),
       DROPBOX_REDIRECT_URI: JSON.stringify(

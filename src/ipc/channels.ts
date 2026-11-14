@@ -1,6 +1,7 @@
 // Defines the IPC channel names shared by the main and preload processes.
 
 export const IPC_CHANNELS = {
+  uploadS3Video: 'upload-s3-video',
   dropboxStatus: 'dropbox-status',
   connectDropbox: 'connect-dropbox',
   disconnectDropbox: 'disconnect-dropbox',

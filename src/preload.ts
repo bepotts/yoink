@@ -19,6 +19,7 @@ const versions: Versions = {
 
 contextBridge.exposeInMainWorld('versions', versions);
 contextBridge.exposeInMainWorld('yoink', {
+  uploadS3Video: () => ipcRenderer.invoke(IPC_CHANNELS.uploadS3Video),
   dropboxStatus: () => ipcRenderer.invoke(IPC_CHANNELS.dropboxStatus),
   connectDropbox: () => ipcRenderer.invoke(IPC_CHANNELS.connectDropbox),
   disconnectDropbox: () => ipcRenderer.invoke(IPC_CHANNELS.disconnectDropbox),
