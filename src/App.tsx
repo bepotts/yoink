@@ -116,8 +116,35 @@ export function App() {
   }
 
   const [destination, setDestination] = useState<
-    'local' | 'drive' | 'onedrive' | 'dropbox'
+    'local' | 'drive' | 'onedrive' | 'dropbox' | 's3'
   >('local');
+  // Uploads a native-dialog-selected video through the configured backend.
+  async function uploadLocalS3Video() {
+    setDownloading(true);
+    setProgress({ phase: 'uploading', percent: null });
+    setCompletedFolder('');
+    setCompletedDriveFolder('');
+    setCompletedOneDrive('');
+    setCompletedDropbox(null);
+    setOpenFolderError('');
+    setStatus('Choose a video to upload…');
+    try {
+      const result = await window.yoink.uploadS3Video();
+      setStatus(
+        result === null
+          ? 'Upload cancelled.'
+          : result.success
+            ? 'Upload complete. Video saved to Amazon S3.'
+            : result.error,
+      );
+    } catch {
+      setStatus('S3 upload failed. Please try again.');
+    } finally {
+      setDownloading(false);
+      setProgress(null);
+    }
+  }
+
   const [driveFolder, setDriveFolder] = useState<DriveFolder | null>(null);
   const [pickingDriveFolder, setPickingDriveFolder] = useState(false);
   const [completedDriveFolder, setCompletedDriveFolder] = useState('');
@@ -221,6 +248,7 @@ export function App() {
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     const request = {
+      ...(destination === 's3' ? { uploadToS3: true } : {}),
       link: link.trim(),
       folder: destination === 'local' ? folder : '',
       ...(destination === 'drive'
@@ -264,17 +292,19 @@ export function App() {
           setCompletedOneDrive(request.oneDriveFolderId);
         else if (request.driveFolderId)
           setCompletedDriveFolder(request.driveFolderId);
-        else setCompletedFolder(request.folder);
+        else if (!request.uploadToS3) setCompletedFolder(request.folder);
       }
       setStatus(
         result.success
-          ? request.dropboxFolderPath !== undefined
-            ? 'Upload complete. Video saved to Dropbox.'
-            : request.oneDriveFolderId
-              ? 'Upload complete. Video saved to OneDrive.'
-              : request.driveFolderId
-                ? 'Upload complete. Video saved to Google Drive.'
-                : 'Download complete. Video saved to the selected folder.'
+          ? request.uploadToS3
+            ? 'Upload complete. Video saved to Amazon S3.'
+            : request.dropboxFolderPath !== undefined
+              ? 'Upload complete. Video saved to Dropbox.'
+              : request.oneDriveFolderId
+                ? 'Upload complete. Video saved to OneDrive.'
+                : request.driveFolderId
+                  ? 'Upload complete. Video saved to Google Drive.'
+                  : 'Download complete. Video saved to the selected folder.'
           : result.error,
       );
     } catch {
@@ -418,7 +448,8 @@ export function App() {
                   | 'local'
                   | 'drive'
                   | 'onedrive'
-                  | 'dropbox',
+                  | 'dropbox'
+                  | 's3',
               );
               setFolderError('');
             }}
@@ -427,6 +458,7 @@ export function App() {
             <option value="drive">Google Drive</option>
             <option value="onedrive">OneDrive</option>
             <option value="dropbox">Dropbox</option>
+            <option value="s3">Amazon S3</option>
           </select>
         </div>
         {destination === 'local' ? (
@@ -457,6 +489,17 @@ export function App() {
             <p className="save-folder-status" role="status">
               {saveFolderStatus}
             </p>
+          </div>
+        ) : destination === 's3' ? (
+          <div className="field">
+            <p>Videos upload to the configured Amazon S3 bucket.</p>
+            <button
+              type="button"
+              disabled={downloading}
+              onClick={uploadLocalS3Video}
+            >
+              Upload a video from computer
+            </button>
           </div>
         ) : destination === 'dropbox' ? (
           <div className="field">
@@ -576,11 +619,13 @@ export function App() {
             />
             <span>
               {progress?.phase === 'uploading'
-                ? destination === 'dropbox'
-                  ? 'Uploading to Dropbox…'
-                  : destination === 'onedrive'
-                    ? 'Uploading to OneDrive…'
-                    : 'Uploading to Google Drive…'
+                ? destination === 's3'
+                  ? 'Uploading to Amazon S3…'
+                  : destination === 'dropbox'
+                    ? 'Uploading to Dropbox…'
+                    : destination === 'onedrive'
+                      ? 'Uploading to OneDrive…'
+                      : 'Uploading to Google Drive…'
                 : progress?.phase === 'processing'
                   ? 'Processing video…'
                   : progress?.percent != null

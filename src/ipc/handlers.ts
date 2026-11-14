@@ -1,5 +1,7 @@
 // Registers the main-process IPC handlers.
 
+import { requireS3Destination, uploadS3File } from '../cloud-storage/s3/upload';
+import { configuredS3Destination } from '../cloud-storage/s3/config';
 import log from 'electron-log/main';
 import {
   googleAccountStatus,
@@ -125,6 +127,47 @@ export function registerIpcHandlers(): void {
     }
   });
   const downloads = new Set<number>();
+  ipcMain.handle(IPC_CHANNELS.uploadS3Video, async (event) => {
+    const id = event.sender.id;
+    if (downloads.has(id))
+      return { success: false, error: 'A transfer is already in progress.' };
+    const owner = BrowserWindow.fromWebContents(event.sender);
+    if (!owner) return null;
+    downloads.add(id);
+    try {
+      const destination = configuredS3Destination();
+      const selected = await dialog.showOpenDialog(owner, {
+        title: 'Select a video to upload to Amazon S3',
+        properties: ['openFile'],
+        filters: [
+          {
+            name: 'Videos',
+            extensions: ['mp4', 'webm', 'mov', 'mkv', 'avi', 'm4v'],
+          },
+        ],
+      });
+      if (selected.canceled || !selected.filePaths[0]) return null;
+      await requireS3Destination(destination);
+      await uploadS3File(selected.filePaths[0], destination, (percent) => {
+        if (!event.sender.isDestroyed())
+          event.sender.send(IPC_CHANNELS.downloadProgress, {
+            phase: 'uploading',
+            percent,
+          });
+      });
+      notifyDownloadComplete('Amazon S3');
+      return { success: true };
+    } catch {
+      log.warn('Amazon S3 video upload failed');
+      return {
+        success: false,
+        error:
+          'S3 upload failed. Check the backend connection, bucket configuration, and AWS permissions. Your original video remains on your computer.',
+      };
+    } finally {
+      downloads.delete(id);
+    }
+  });
   ipcMain.handle(IPC_CHANNELS.uploadFiles, async (event, folderId: string) => {
     const id = event.sender.id;
     if (downloads.has(id))
@@ -187,13 +230,15 @@ export function registerIpcHandlers(): void {
         });
         if (result.success)
           notifyDownloadComplete(
-            request.dropboxFolderPath !== undefined
-              ? 'Dropbox'
-              : request.driveFolderId
-                ? 'Google Drive'
-                : request.oneDriveFolderId
-                  ? 'OneDrive'
-                  : request.folder,
+            request.uploadToS3 === true
+              ? 'Amazon S3'
+              : request.dropboxFolderPath !== undefined
+                ? 'Dropbox'
+                : request.driveFolderId
+                  ? 'Google Drive'
+                  : request.oneDriveFolderId
+                    ? 'OneDrive'
+                    : request.folder,
           );
         return result;
       } finally {
