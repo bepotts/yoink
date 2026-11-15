@@ -45,7 +45,8 @@ for (const target of ['/videos', '']) {
     );
     const window = await app.firstWindow();
     await window.reload();
-    await window.getByLabel('Save to').selectOption('dropbox');
+    await window.getByLabel('Save to').selectOption('cloud');
+    await window.getByRole('radio', { name: 'Dropbox', exact: true }).check();
     const select = window.getByRole('button', {
       name: 'Select Dropbox folder',
       exact: true,
@@ -82,10 +83,16 @@ for (const target of ['/videos', '']) {
     await select.click();
     await picker.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(window.getByText(name, { exact: true })).toBeVisible();
-    const disconnect = window.getByRole('button', {
-      name: 'Disconnect Dropbox',
-      exact: true,
-    });
+    await expect(
+      window.getByRole('button', { name: /^Disconnect/ }),
+    ).toHaveCount(0);
+    await window.getByRole('button', { name: 'Settings', exact: true }).click();
+    const disconnect = window
+      .getByRole('region', { name: 'Settings', exact: true })
+      .getByRole('button', {
+        name: 'Disconnect Dropbox',
+        exact: true,
+      });
     await disconnect.click();
     await expect(disconnect).toBeEnabled();
     await expect(window.getByText(name, { exact: true })).toBeVisible();
@@ -96,14 +103,18 @@ for (const target of ['/videos', '']) {
     await expect(
       window.getByText('No Dropbox folder selected', { exact: true }),
     ).toBeVisible();
-    await window.getByLabel('Save to').selectOption('drive');
+    await window.getByLabel('Save to').selectOption('cloud');
+    await window
+      .getByRole('radio', { name: 'Google Drive', exact: true })
+      .check();
     await expect(
       window.getByRole('button', {
         name: 'Select Google Drive folder',
         exact: true,
       }),
     ).toBeVisible();
-    await window.getByLabel('Save to').selectOption('onedrive');
+    await window.getByLabel('Save to').selectOption('cloud');
+    await window.getByRole('radio', { name: 'OneDrive', exact: true }).check();
     await expect(
       window.getByRole('button', {
         name: 'Select OneDrive folder',

@@ -36,6 +36,7 @@ test('submits the link and folder and shows download completion', async ({
     { channel: IPC_CHANNELS.downloadVideo, downloadFolder },
   );
   const window = await app.firstWindow();
+  await window.getByLabel('Save to').selectOption('local');
   const openFolder = window.getByRole('button', {
     name: 'Open folder',
     exact: true,
@@ -125,6 +126,7 @@ test('requires a link and selected folder before submitting', async ({
   app,
 }) => {
   const window = await app.firstWindow();
+  await window.getByLabel('Save to').selectOption('local');
   await window.getByRole('button', { name: 'Submit', exact: true }).click();
   await expect(window.locator('#download-status')).toHaveText(
     'Please enter a video link.',

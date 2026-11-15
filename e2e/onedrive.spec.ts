@@ -42,7 +42,8 @@ test('browses OneDrive from My files and downloads directly into the selected fo
   }, IPC_CHANNELS);
   const window = await app.firstWindow();
   await window.reload();
-  await window.getByLabel('Save to').selectOption('onedrive');
+  await window.getByLabel('Save to').selectOption('cloud');
+  await window.getByRole('radio', { name: 'OneDrive', exact: true }).check();
   await window
     .getByRole('button', { name: 'Select OneDrive folder', exact: true })
     .click();
@@ -77,7 +78,10 @@ test('browses OneDrive from My files and downloads directly into the selected fo
   await expect(
     window.getByText('OneDrive: Videos', { exact: true }),
   ).toBeVisible();
-  await window.getByLabel('Save to').selectOption('drive');
+  await window.getByLabel('Save to').selectOption('cloud');
+  await window
+    .getByRole('radio', { name: 'Google Drive', exact: true })
+    .check();
   await expect(
     window.getByRole('button', {
       name: 'Select Google Drive folder',

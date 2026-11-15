@@ -15,6 +15,7 @@ test('saved folder survives an application restart', async () => {
   let app = await electron.launch({ args });
   try {
     let window = await app.firstWindow();
+    await window.getByLabel('Save to').selectOption('local');
     const saveButton = window.getByRole('button', { name: 'Save folder' });
     await expect(saveButton).toBeDisabled();
     await app.evaluate(({ dialog }) => {
@@ -41,6 +42,7 @@ test('saved folder survives an application restart', async () => {
     await app.close();
     app = await electron.launch({ args });
     window = await app.firstWindow();
+    await window.getByLabel('Save to').selectOption('local');
     await expect(window.locator('#selected-folder')).toHaveText(
       '/tmp/My Saved Folder',
     );
@@ -54,6 +56,7 @@ test('selects a folder through the preload and main process', async ({
   app,
 }) => {
   const window = await app.firstWindow();
+  await window.getByLabel('Save to').selectOption('local');
   await app.evaluate(({ dialog, BrowserWindow }) => {
     dialog.showOpenDialog = (owner, options) => {
       if (
@@ -102,6 +105,7 @@ test('canceling the folder picker leaves the initial state intact', async ({
     dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
   });
   const window = await app.firstWindow();
+  await window.getByLabel('Save to').selectOption('local');
   const button = window.getByRole('button', { name: 'Select folder' });
   await button.click();
   await expect(button).toBeEnabled();
@@ -117,6 +121,7 @@ test('recovers after a folder picker error', async ({ app }) => {
     };
   });
   const window = await app.firstWindow();
+  await window.getByLabel('Save to').selectOption('local');
   const button = window.getByRole('button', { name: 'Select folder' });
   await button.click();
   await expect(window.locator('#selected-folder')).toHaveText(
