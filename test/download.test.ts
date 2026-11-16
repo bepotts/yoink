@@ -8,6 +8,8 @@ import { PassThrough } from 'node:stream';
 import type { DownloadProgress } from '../src/ipc/download-types';
 
 const mocks = vi.hoisted(() => ({
+  s3Ready: vi.fn<() => Promise<void>>(),
+  s3Upload: vi.fn<(...args: unknown[]) => Promise<void>>(),
   dropboxFolder: vi.fn<() => Promise<object>>(),
   dropboxUpload: vi.fn<(...args: unknown[]) => Promise<void>>(),
   oneDriveFolder: vi.fn<() => Promise<object>>(),
@@ -27,6 +29,13 @@ const mocks = vi.hoisted(() => ({
   readdir: vi.fn<() => Promise<object[]>>(),
   rm: vi.fn<() => Promise<void>>(),
   save: vi.fn<() => Promise<string>>(),
+}));
+vi.mock('../src/cloud-storage/s3/config', () => ({
+  configuredS3Destination: () => ({ backendUrl: 'http://127.0.0.1:8000' }),
+}));
+vi.mock('../src/cloud-storage/s3/upload', () => ({
+  requireS3Destination: mocks.s3Ready,
+  uploadS3File: mocks.s3Upload,
 }));
 vi.mock('../src/cloud-storage/dropbox/drive', () => ({
   requireDropboxFolder: mocks.dropboxFolder,
@@ -60,6 +69,8 @@ vi.mock('../src/ipc/save-download', () => ({ saveDownload: mocks.save }));
 
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.s3Ready.mockResolvedValue(undefined);
+  mocks.s3Upload.mockResolvedValue(undefined);
   mocks.dropboxFolder.mockResolvedValue({});
   mocks.dropboxUpload.mockResolvedValue(undefined);
   mocks.oneDriveFolder.mockResolvedValue({});
@@ -362,4 +373,74 @@ test('logs transfer failures without sensitive URLs or provider payloads', async
   expect(JSON.stringify(vi.mocked(log.error).mock.calls)).not.toContain(
     'private',
   );
+});
+
+test('S3 uploads only to the backend and cleans staging after success', async () => {
+  const progress = vi.fn<(value: DownloadProgress) => void>();
+  mocks.s3Upload.mockImplementation(async (_source, _destination, report) => {
+    (report as (percent: number) => void)(75);
+  });
+  await expect(
+    downloadVideo(
+      { link: 'https://example.com/video', folder: '', uploadToS3: true },
+      progress,
+    ),
+  ).resolves.toEqual({ success: true });
+  expect(mocks.s3Ready).toHaveBeenCalledWith({
+    backendUrl: 'http://127.0.0.1:8000',
+  });
+  expect(mocks.s3Ready.mock.invocationCallOrder[0]).toBeLessThan(
+    mocks.run.mock.invocationCallOrder[0],
+  );
+  expect(mocks.s3Upload).toHaveBeenCalledWith(
+    '/tmp/My Folder/.yoink-test/video.mp4',
+    { backendUrl: 'http://127.0.0.1:8000' },
+    expect.any(Function),
+  );
+  expect(progress).toHaveBeenCalledWith({ phase: 'uploading', percent: 75 });
+  expect(mocks.save).not.toHaveBeenCalled();
+  expect(mocks.upload).not.toHaveBeenCalled();
+  expect(mocks.oneDriveUpload).not.toHaveBeenCalled();
+  expect(mocks.dropboxUpload).not.toHaveBeenCalled();
+  expect(mocks.stat).not.toHaveBeenCalled();
+  expect(mocks.rm).toHaveBeenCalledWith('/tmp/My Folder/.yoink-test', {
+    recursive: true,
+    force: true,
+  });
+});
+
+test('S3 readiness failure prevents downloading or staging files', async () => {
+  mocks.s3Ready.mockRejectedValue(new Error('Backend unavailable'));
+  await expect(
+    downloadVideo({
+      link: 'https://example.com/video',
+      folder: '',
+      uploadToS3: true,
+    }),
+  ).resolves.toMatchObject({
+    success: false,
+    error: expect.stringContaining('S3 is unavailable.'),
+  });
+  expect(mocks.run).not.toHaveBeenCalled();
+  expect(mocks.mkdtemp).not.toHaveBeenCalled();
+  expect(mocks.s3Upload).not.toHaveBeenCalled();
+});
+
+test('S3 upload failure preserves the staged recovery copy', async () => {
+  mocks.s3Upload.mockRejectedValue(new Error('Backend upload failed'));
+  await expect(
+    downloadVideo({
+      link: 'https://example.com/video',
+      folder: '',
+      uploadToS3: true,
+    }),
+  ).resolves.toMatchObject({
+    success: false,
+    error: expect.stringMatching(
+      /Amazon S3 upload failed\..*Downloaded files are kept at \/tmp\/My Folder\/\.yoink-test/,
+    ),
+  });
+  expect(mocks.s3Upload).toHaveBeenCalledOnce();
+  expect(mocks.rm).not.toHaveBeenCalled();
+  expect(mocks.save).not.toHaveBeenCalled();
 });
