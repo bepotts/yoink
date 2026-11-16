@@ -14,7 +14,11 @@ import { validateS3Destination, type S3Destination } from './types';
 function endpoint(destination: S3Destination): URL {
   const error = validateS3Destination(destination);
   if (error) throw new Error(error);
-  return new URL(`${destination.backendUrl.replace(/\/+$/, '')}/uploads/s3`);
+  const url = new URL(destination.backendUrl);
+  url.pathname = `${url.pathname.replace(/\/+$/, '')}/uploads/s3`;
+  url.search = '';
+  url.hash = '';
+  return url;
 }
 
 // Checks backend readiness before spending time downloading a video.
