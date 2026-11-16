@@ -29,6 +29,7 @@ function loadSavedFolder() {
 
 // Renders downloads and the Google account connection controls.
 export function App() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [googleAccount, setGoogleAccount] = useState<GoogleAccountStatus>({
     connected: false,
   });
@@ -115,9 +116,37 @@ export function App() {
     }
   }
 
+  const [storage, setStorage] = useState<'' | 'local' | 'cloud' | 's3'>('');
   const [destination, setDestination] = useState<
-    'local' | 'drive' | 'onedrive' | 'dropbox'
+    'local' | 'drive' | 'onedrive' | 'dropbox' | 's3'
   >('local');
+  // Uploads a native-dialog-selected video through the configured backend.
+  async function uploadLocalS3Video() {
+    setDownloading(true);
+    setProgress({ phase: 'uploading', percent: null });
+    setCompletedFolder('');
+    setCompletedDriveFolder('');
+    setCompletedOneDrive('');
+    setCompletedDropbox(null);
+    setOpenFolderError('');
+    setStatus('Choose a video to upload…');
+    try {
+      const result = await window.yoink.uploadS3Video();
+      setStatus(
+        result === null
+          ? 'Upload cancelled.'
+          : result.success
+            ? 'Upload complete. Video saved to Amazon S3.'
+            : result.error,
+      );
+    } catch {
+      setStatus('S3 upload failed. Please try again.');
+    } finally {
+      setDownloading(false);
+      setProgress(null);
+    }
+  }
+
   const [driveFolder, setDriveFolder] = useState<DriveFolder | null>(null);
   const [pickingDriveFolder, setPickingDriveFolder] = useState(false);
   const [completedDriveFolder, setCompletedDriveFolder] = useState('');
@@ -134,11 +163,10 @@ export function App() {
   }, []);
 
   // Connects or disconnects the account while preventing repeated submissions.
-  async function toggleGoogleAccount() {
+  async function toggleGoogleAccount(action: 'connect' | 'disconnect') {
     setGoogleBusy(true);
     try {
-      const result = await (googleAccount.connected &&
-      !googleAccount.needsReconnect
+      const result = await (action === 'disconnect'
         ? window.yoink.disconnectGoogle()
         : window.yoink.connectGoogle());
       setGoogleAccount(result);
@@ -220,7 +248,9 @@ export function App() {
   // Downloads a video and saves it to the selected destination.
   async function submit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!storage) return;
     const request = {
+      ...(destination === 's3' ? { uploadToS3: true } : {}),
       link: link.trim(),
       folder: destination === 'local' ? folder : '',
       ...(destination === 'drive'
@@ -264,17 +294,19 @@ export function App() {
           setCompletedOneDrive(request.oneDriveFolderId);
         else if (request.driveFolderId)
           setCompletedDriveFolder(request.driveFolderId);
-        else setCompletedFolder(request.folder);
+        else if (!request.uploadToS3) setCompletedFolder(request.folder);
       }
       setStatus(
         result.success
-          ? request.dropboxFolderPath !== undefined
-            ? 'Upload complete. Video saved to Dropbox.'
-            : request.oneDriveFolderId
-              ? 'Upload complete. Video saved to OneDrive.'
-              : request.driveFolderId
-                ? 'Upload complete. Video saved to Google Drive.'
-                : 'Download complete. Video saved to the selected folder.'
+          ? request.uploadToS3
+            ? 'Upload complete. Video saved to Amazon S3.'
+            : request.dropboxFolderPath !== undefined
+              ? 'Upload complete. Video saved to Dropbox.'
+              : request.oneDriveFolderId
+                ? 'Upload complete. Video saved to OneDrive.'
+                : request.driveFolderId
+                  ? 'Upload complete. Video saved to Google Drive.'
+                  : 'Download complete. Video saved to the selected folder.'
           : result.error,
       );
     } catch {
@@ -323,68 +355,83 @@ export function App() {
 
   return (
     <main>
-      <h1>Yoink</h1>
-      <section aria-label="Google Drive connection">
+      <header className="app-header">
+        <h1>Yoink</h1>
         <button
           type="button"
-          disabled={googleBusy || downloading || pickingDriveFolder}
-          onClick={toggleGoogleAccount}
+          aria-expanded={settingsOpen}
+          aria-controls="settings"
+          onClick={() => setSettingsOpen(!settingsOpen)}
         >
-          {googleBusy
-            ? 'Updating Google connection…'
-            : googleAccount.needsReconnect
-              ? 'Reconnect Google Drive'
-              : googleAccount.connected
-                ? 'Disconnect Google'
-                : 'Connect Google Drive'}
+          Settings
         </button>
-        <p role="status">
-          {googleAccount.error ||
-            (googleAccount.connected
-              ? googleAccount.needsReconnect
-                ? 'Reconnect Google Drive to allow uploads.'
-                : 'Google Drive connected.'
-              : 'Connect your Google account to upload to Drive.')}
-        </p>
-      </section>
-      <section aria-label="OneDrive connection">
-        <button
-          type="button"
-          disabled={microsoftBusy || downloading || pickingOneDrive}
-          onClick={toggleMicrosoft}
-        >
-          {microsoftBusy
-            ? 'Updating Microsoft connection…'
-            : microsoftAccount.connected
-              ? 'Disconnect OneDrive'
-              : 'Connect OneDrive'}
-        </button>
-        <p role="status">
-          {microsoftAccount.error ||
-            (microsoftAccount.connected
-              ? 'OneDrive connected.'
-              : 'Connect your Microsoft account to upload to OneDrive.')}
-        </p>
-      </section>
-      <section aria-label="Dropbox connection">
-        <button
-          type="button"
-          disabled={dropboxBusy || downloading || pickingDropbox}
-          onClick={toggleDropbox}
-        >
-          {dropboxBusy
-            ? 'Updating Dropbox account…'
-            : dropboxAccount.connected
-              ? 'Disconnect Dropbox'
-              : 'Add Dropbox account'}
-        </button>
-        <p role="status">
-          {dropboxAccount.error ||
-            (dropboxAccount.connected
-              ? 'Dropbox connected.'
-              : 'Add your Dropbox account to upload videos to Dropbox.')}
-        </p>
-      </section>
+      </header>
+      {settingsOpen && (
+        <section id="settings" aria-label="Settings" className="settings-panel">
+          <h2>Cloud connections</h2>
+          <p>Manage connected cloud storage accounts.</p>
+          <div className="folder-actions">
+            <button
+              type="button"
+              disabled={
+                !googleAccount.connected ||
+                googleBusy ||
+                downloading ||
+                pickingDriveFolder
+              }
+              onClick={() => toggleGoogleAccount('disconnect')}
+            >
+              {googleBusy
+                ? 'Updating Google connection…'
+                : 'Disconnect Google Drive'}
+            </button>
+            <button
+              type="button"
+              disabled={
+                !microsoftAccount.connected ||
+                microsoftBusy ||
+                downloading ||
+                pickingOneDrive
+              }
+              onClick={toggleMicrosoft}
+            >
+              {microsoftBusy
+                ? 'Updating Microsoft connection…'
+                : 'Disconnect OneDrive'}
+            </button>
+            <button
+              type="button"
+              disabled={
+                !dropboxAccount.connected ||
+                dropboxBusy ||
+                downloading ||
+                pickingDropbox
+              }
+              onClick={toggleDropbox}
+            >
+              {dropboxBusy ? 'Updating Dropbox account…' : 'Disconnect Dropbox'}
+            </button>
+          </div>
+          <p role="status">
+            {googleAccount.error ||
+              (googleAccount.connected
+                ? 'Google Drive connected.'
+                : 'Google Drive disconnected.')}
+          </p>
+          <p role="status">
+            {microsoftAccount.error ||
+              (microsoftAccount.connected
+                ? 'OneDrive connected.'
+                : 'OneDrive disconnected.')}
+          </p>
+          <p role="status">
+            {dropboxAccount.error ||
+              (dropboxAccount.connected
+                ? 'Dropbox connected.'
+                : 'Dropbox disconnected.')}
+          </p>
+        </section>
+      )}
       <form onSubmit={submit} noValidate>
         <div className="field">
           <label htmlFor="link">Link</label>
@@ -402,7 +449,7 @@ export function App() {
           <label htmlFor="destination">Save to</label>
           <select
             id="destination"
-            value={destination}
+            value={storage}
             disabled={
               downloading ||
               googleBusy ||
@@ -413,116 +460,232 @@ export function App() {
               pickingDropbox
             }
             onChange={(event) => {
-              setDestination(
-                event.target.value as
-                  | 'local'
-                  | 'drive'
-                  | 'onedrive'
-                  | 'dropbox',
-              );
+              const selected = event.target.value as 'local' | 'cloud' | 's3';
+              setStorage(selected);
+              setDestination(selected === 'cloud' ? 'drive' : selected);
               setFolderError('');
             }}
           >
-            <option value="local">Local folder</option>
-            <option value="drive">Google Drive</option>
-            <option value="onedrive">OneDrive</option>
-            <option value="dropbox">Dropbox</option>
+            <option value="" disabled>
+              Select storage
+            </option>
+            <option value="local">Local</option>
+            <option value="cloud">Cloud</option>
+            <option value="s3">S3</option>
           </select>
         </div>
-        {destination === 'local' ? (
-          <div className="field">
-            <span id="folder-label">Folder</span>
-            <div className="folder-actions">
-              <button
-                ref={folderButton}
-                id="select-folder"
-                type="button"
-                aria-describedby="selected-folder"
-                disabled={selectingFolder || downloading}
-                onClick={selectFolder}
-              >
-                Select folder
-              </button>
-              <button
-                type="button"
-                disabled={!folder || selectingFolder || downloading}
-                onClick={saveFolder}
-              >
-                Save folder
-              </button>
-            </div>
-            <p id="selected-folder" role="status">
-              {folderError || folder || 'No folder selected'}
-            </p>
-            <p className="save-folder-status" role="status">
-              {saveFolderStatus}
-            </p>
-          </div>
-        ) : destination === 'dropbox' ? (
-          <div className="field">
-            <button
-              ref={dropboxButton}
-              type="button"
-              disabled={downloading || dropboxBusy || !dropboxAccount.connected}
-              onClick={() => setPickingDropbox(true)}
-            >
-              Select Dropbox folder
-            </button>
-            <p role="status">
-              {dropboxFolder
-                ? `Dropbox: ${dropboxFolder.name}`
-                : 'No Dropbox folder selected'}
-            </p>
-          </div>
-        ) : destination === 'onedrive' ? (
-          <div className="field">
-            <button
-              ref={oneDriveButton}
-              type="button"
-              disabled={
-                downloading || microsoftBusy || !microsoftAccount.connected
-              }
-              onClick={() => setPickingOneDrive(true)}
-            >
-              Select OneDrive folder
-            </button>
-            <p role="status">
-              {oneDriveFolder
-                ? `OneDrive: ${oneDriveFolder.name}`
-                : 'No OneDrive folder selected'}
-            </p>
-          </div>
-        ) : (
-          <div className="field">
-            <button
-              ref={driveFolderButton}
-              type="button"
+        {storage === 'cloud' && (
+          <>
+            <fieldset
               disabled={
                 downloading ||
                 googleBusy ||
-                pickingDriveFolder ||
                 microsoftBusy ||
-                pickingOneDrive
+                dropboxBusy ||
+                pickingDriveFolder ||
+                pickingOneDrive ||
+                pickingDropbox
               }
-              onClick={selectGoogleDriveFolder}
             >
-              {pickingDriveFolder
-                ? 'Choose a folder in your browser…'
-                : 'Select Google Drive folder'}
-            </button>
-            <p role="status">
-              {folderError ||
-                (driveFolder
-                  ? `Google Drive: ${driveFolder.name}`
-                  : 'No Google Drive folder selected')}
-            </p>
-          </div>
+              <legend>Cloud provider</legend>
+              {(['drive', 'onedrive', 'dropbox'] as const).map((provider) => (
+                <label key={provider}>
+                  <input
+                    type="radio"
+                    name="cloud-provider"
+                    value={provider}
+                    checked={destination === provider}
+                    onChange={() => {
+                      setDestination(provider);
+                      setFolderError('');
+                    }}
+                  />
+                  {provider === 'drive'
+                    ? 'Google Drive'
+                    : provider === 'onedrive'
+                      ? 'OneDrive'
+                      : 'Dropbox'}
+                </label>
+              ))}
+            </fieldset>
+            {destination === 'drive' && (
+              <section aria-label="Google Drive connection">
+                {(!googleAccount.connected || googleAccount.needsReconnect) && (
+                  <button
+                    type="button"
+                    disabled={googleBusy || downloading || pickingDriveFolder}
+                    onClick={() => toggleGoogleAccount('connect')}
+                  >
+                    {googleBusy
+                      ? 'Updating Google connection…'
+                      : googleAccount.needsReconnect
+                        ? 'Reconnect Google Drive'
+                        : 'Connect Google Drive'}
+                  </button>
+                )}
+                <p role="status">
+                  {googleAccount.error ||
+                    (googleAccount.connected
+                      ? googleAccount.needsReconnect
+                        ? 'Reconnect Google Drive to allow uploads.'
+                        : 'Google Drive connected.'
+                      : 'Connect your Google account to upload to Drive.')}
+                </p>
+              </section>
+            )}
+            {destination === 'onedrive' && (
+              <section aria-label="OneDrive connection">
+                {!microsoftAccount.connected && (
+                  <button
+                    type="button"
+                    disabled={microsoftBusy || downloading || pickingOneDrive}
+                    onClick={toggleMicrosoft}
+                  >
+                    {microsoftBusy
+                      ? 'Updating Microsoft connection…'
+                      : 'Connect OneDrive'}
+                  </button>
+                )}
+                <p role="status">
+                  {microsoftAccount.error ||
+                    (microsoftAccount.connected
+                      ? 'OneDrive connected.'
+                      : 'Connect your Microsoft account to upload to OneDrive.')}
+                </p>
+              </section>
+            )}
+            {destination === 'dropbox' && (
+              <section aria-label="Dropbox connection">
+                {!dropboxAccount.connected && (
+                  <button
+                    type="button"
+                    disabled={dropboxBusy || downloading || pickingDropbox}
+                    onClick={toggleDropbox}
+                  >
+                    {dropboxBusy
+                      ? 'Updating Dropbox account…'
+                      : 'Add Dropbox account'}
+                  </button>
+                )}
+                <p role="status">
+                  {dropboxAccount.error ||
+                    (dropboxAccount.connected
+                      ? 'Dropbox connected.'
+                      : 'Add your Dropbox account to upload videos to Dropbox.')}
+                </p>
+              </section>
+            )}
+          </>
         )}
+        {storage &&
+          (destination === 'local' ? (
+            <div className="field">
+              <span id="folder-label">Folder</span>
+              <div className="folder-actions">
+                <button
+                  ref={folderButton}
+                  id="select-folder"
+                  type="button"
+                  aria-describedby="selected-folder"
+                  disabled={selectingFolder || downloading}
+                  onClick={selectFolder}
+                >
+                  Select folder
+                </button>
+                <button
+                  type="button"
+                  disabled={!folder || selectingFolder || downloading}
+                  onClick={saveFolder}
+                >
+                  Save folder
+                </button>
+              </div>
+              <p id="selected-folder" role="status">
+                {folderError || folder || 'No folder selected'}
+              </p>
+              <p className="save-folder-status" role="status">
+                {saveFolderStatus}
+              </p>
+            </div>
+          ) : destination === 's3' ? (
+            <div className="field">
+              <p>Videos upload to the configured Amazon S3 bucket.</p>
+              <button
+                type="button"
+                disabled={downloading}
+                onClick={uploadLocalS3Video}
+              >
+                Upload a video from computer
+              </button>
+            </div>
+          ) : destination === 'dropbox' ? (
+            <div className="field">
+              <button
+                ref={dropboxButton}
+                type="button"
+                disabled={
+                  downloading || dropboxBusy || !dropboxAccount.connected
+                }
+                onClick={() => setPickingDropbox(true)}
+              >
+                Select Dropbox folder
+              </button>
+              <p role="status">
+                {dropboxFolder
+                  ? `Dropbox: ${dropboxFolder.name}`
+                  : 'No Dropbox folder selected'}
+              </p>
+            </div>
+          ) : destination === 'onedrive' ? (
+            <div className="field">
+              <button
+                ref={oneDriveButton}
+                type="button"
+                disabled={
+                  downloading || microsoftBusy || !microsoftAccount.connected
+                }
+                onClick={() => setPickingOneDrive(true)}
+              >
+                Select OneDrive folder
+              </button>
+              <p role="status">
+                {oneDriveFolder
+                  ? `OneDrive: ${oneDriveFolder.name}`
+                  : 'No OneDrive folder selected'}
+              </p>
+            </div>
+          ) : (
+            <div className="field">
+              <button
+                ref={driveFolderButton}
+                type="button"
+                disabled={
+                  downloading ||
+                  googleBusy ||
+                  pickingDriveFolder ||
+                  microsoftBusy ||
+                  pickingOneDrive
+                }
+                onClick={selectGoogleDriveFolder}
+              >
+                {pickingDriveFolder
+                  ? 'Choose a folder in your browser…'
+                  : 'Select Google Drive folder'}
+              </button>
+              <p role="status">
+                {folderError ||
+                  (driveFolder
+                    ? `Google Drive: ${driveFolder.name}`
+                    : 'No Google Drive folder selected')}
+              </p>
+            </div>
+          ))}
         <button
           id="submit"
           type="submit"
           disabled={
             downloading ||
+            !storage ||
             selectingFolder ||
             pickingDriveFolder ||
             pickingOneDrive ||
@@ -576,11 +739,13 @@ export function App() {
             />
             <span>
               {progress?.phase === 'uploading'
-                ? destination === 'dropbox'
-                  ? 'Uploading to Dropbox…'
-                  : destination === 'onedrive'
-                    ? 'Uploading to OneDrive…'
-                    : 'Uploading to Google Drive…'
+                ? destination === 's3'
+                  ? 'Uploading to Amazon S3…'
+                  : destination === 'dropbox'
+                    ? 'Uploading to Dropbox…'
+                    : destination === 'onedrive'
+                      ? 'Uploading to OneDrive…'
+                      : 'Uploading to Google Drive…'
                 : progress?.phase === 'processing'
                   ? 'Processing video…'
                   : progress?.percent != null

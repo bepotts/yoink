@@ -25,6 +25,8 @@ export const test = base.extend<{ app: ElectronApplication }>({
     }
     const app = await electron.launch({ args });
     try {
+      // Window creation follows IPC registration; wait before tests replace handlers.
+      await app.firstWindow();
       await use(app);
     } finally {
       await app.close();

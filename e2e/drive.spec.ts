@@ -33,7 +33,10 @@ test('selects a Drive folder as the destination without requiring a local folder
   }, IPC_CHANNELS);
   const window = await app.firstWindow();
   await window.reload();
-  await window.getByLabel('Save to').selectOption('drive');
+  await window.getByLabel('Save to').selectOption('cloud');
+  await window
+    .getByRole('radio', { name: 'Google Drive', exact: true })
+    .check();
   await window
     .getByRole('button', { name: 'Select Google Drive folder', exact: true })
     .click();
@@ -102,16 +105,25 @@ for (const failureMode of ['error response', 'IPC exception']) {
     );
     const window = await app.firstWindow();
     await window.reload();
-    await window.getByLabel('Save to').selectOption('drive');
+    await window.getByLabel('Save to').selectOption('cloud');
+    await window
+      .getByRole('radio', { name: 'Google Drive', exact: true })
+      .check();
     await window
       .getByRole('button', { name: 'Select Google Drive folder', exact: true })
       .click();
     const selected = window.getByText('Google Drive: Videos', { exact: true });
     await expect(selected).toBeVisible();
-    const disconnect = window.getByRole('button', {
-      name: 'Disconnect Google',
-      exact: true,
-    });
+    await expect(
+      window.getByRole('button', { name: /^Disconnect/ }),
+    ).toHaveCount(0);
+    await window.getByRole('button', { name: 'Settings', exact: true }).click();
+    const disconnect = window
+      .getByRole('region', { name: 'Settings', exact: true })
+      .getByRole('button', {
+        name: 'Disconnect Google Drive',
+        exact: true,
+      });
     await disconnect.click();
     await expect(disconnect).toBeEnabled();
     await expect(selected).toBeVisible();

@@ -1,6 +1,8 @@
 // Defines download request and result types and validates link and folder input.
 
 export interface DownloadRequest {
+  // Sends downloaded videos to the backend for S3 storage when enabled.
+  uploadToS3?: boolean;
   // Video link to download.
   link: string;
   // Local destination; unused when a Drive folder is supplied.
@@ -35,12 +37,19 @@ export function validateDownload(request: DownloadRequest): string | null {
   }
   if (
     [
+      request.uploadToS3 ? true : undefined,
       request.driveFolderId,
       request.oneDriveFolderId,
       request.dropboxFolderPath,
     ].filter((value) => value !== undefined).length > 1
   )
     return 'Please select only one cloud destination.';
+  if (
+    request.uploadToS3 !== undefined &&
+    typeof request.uploadToS3 !== 'boolean'
+  )
+    return 'Please select a valid S3 destination.';
+  if (request.uploadToS3) return null;
   if (request.dropboxFolderPath !== undefined) {
     const folderPath = request.dropboxFolderPath;
     if (

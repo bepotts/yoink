@@ -1,5 +1,7 @@
 // Validates the destination and runs yt-dlp to download a video, reporting failures.
 
+import { configuredS3Destination } from '../cloud-storage/s3/config';
+import { requireS3Destination, uploadS3File } from '../cloud-storage/s3/upload';
 import log from 'electron-log/main';
 import { execFile } from 'node:child_process';
 import { access, stat, mkdtemp, readdir, rm } from 'node:fs/promises';
@@ -31,6 +33,15 @@ import {
 
 const run = promisify(execFile);
 
+// Returns the selected cloud provider name, or null for local downloads.
+function getCloudDestination(request: DownloadRequest): string | null {
+  if (request.uploadToS3 === true) return 'Amazon S3';
+  if (request.dropboxFolderPath !== undefined) return 'Dropbox';
+  if (request.driveFolderId) return 'Google Drive';
+  if (request.oneDriveFolderId) return 'OneDrive';
+  return null;
+}
+
 // Downloads into staging, then saves locally or uploads to the selected Drive folder.
 export async function downloadVideo(
   request: DownloadRequest,
@@ -42,17 +53,12 @@ export async function downloadVideo(
     return { success: false, error };
   }
 
-  const cloud =
-    request.dropboxFolderPath !== undefined
-      ? 'Dropbox'
-      : request.driveFolderId
-        ? 'Google Drive'
-        : request.oneDriveFolderId
-          ? 'OneDrive'
-          : null;
+  const cloud = getCloudDestination(request);
   log.info('Download started', { destination: cloud ?? 'local' });
   try {
-    if (request.dropboxFolderPath !== undefined) {
+    if (request.uploadToS3 === true) {
+      await requireS3Destination(configuredS3Destination());
+    } else if (request.dropboxFolderPath !== undefined) {
       await requireDropboxFolder(request.dropboxFolderPath);
     } else if (request.oneDriveFolderId) {
       await requireOneDriveFolder(request.oneDriveFolderId);
@@ -68,9 +74,11 @@ export async function downloadVideo(
     });
     return {
       success: false,
-      error: cloud
-        ? `The ${cloud} folder is unavailable. Reconnect the account and select a writable folder.`
-        : 'The selected folder is unavailable or not writable. Please select another folder.',
+      error: request.uploadToS3
+        ? 'S3 is unavailable. Check YOINK_BACKEND_URL and the backend bucket configuration.'
+        : cloud
+          ? `The ${cloud} folder is unavailable. Reconnect the account and select a writable folder.`
+          : 'The selected folder is unavailable or not writable. Please select another folder.',
     };
   }
 
@@ -130,7 +138,13 @@ export async function downloadVideo(
     }
     for (const file of files) {
       if (file.isFile()) {
-        if (request.dropboxFolderPath !== undefined) {
+        if (request.uploadToS3 === true) {
+          await uploadS3File(
+            path.join(stagingFolder, file.name),
+            configuredS3Destination(),
+            (percent) => onProgress({ phase: 'uploading', percent }),
+          );
+        } else if (request.dropboxFolderPath !== undefined) {
           await uploadDropboxFile(
             path.join(stagingFolder, file.name),
             request.dropboxFolderPath,

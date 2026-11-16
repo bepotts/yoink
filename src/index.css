@@ -97,3 +97,21 @@ dialog li button {
   margin: 0.25rem 0;
   overflow-wrap: anywhere;
 }
+
+/* Aligns settings with the title and separates account management from uploads. */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.settings-panel {
+  padding: 1rem;
+  border: 1px solid #999;
+  border-radius: 8px;
+}
+
+.settings-panel h2 {
+  margin-top: 0;
+}

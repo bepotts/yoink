@@ -30,7 +30,7 @@
     "check": "npm run lint && npm run typecheck && npm run test",
     "prepare": "husky",
     "act:list": "act --list",
-    "act:check": "act push --job check",
+    "act:check": "act push --job lint && act push --job typecheck && act push --job unit-tests && act push --job coverage",
     "act:e2e": "act push --job e2e",
     "act:ci": "act push",
     "act:all": "node scripts/run-tests.mjs act"

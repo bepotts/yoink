@@ -7,6 +7,10 @@ declare module '*.css';
 interface Window {
   // Restricted main-process operations available to the UI.
   yoink: {
+    // Selects a local video using the native dialog and uploads it to S3.
+    uploadS3Video: () => Promise<
+      import('./ipc/download-types').DownloadResult | null
+    >;
     // Reports the locally saved Dropbox connection.
     dropboxStatus: () => Promise<
       import('./cloud-storage/dropbox/types/dropbox-types').DropboxStatus
@@ -106,3 +110,6 @@ declare const SENTRY_DSN: string;
 
 // Enables renderer instrumentation when the main process has a configured DSN.
 declare const SENTRY_ENABLED: boolean;
+
+// Backend URL injected into the main process for S3 uploads.
+declare const YOINK_BACKEND_URL: string;
