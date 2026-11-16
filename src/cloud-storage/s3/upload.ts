@@ -55,10 +55,19 @@ export async function uploadS3File(
     yield header;
     let sent = 0;
     for await (const chunk of body) {
-      sent += (chunk as Buffer).length;
+      const size = (chunk as Buffer).length;
+      if (sent + size > file.size)
+        throw new Error(
+          'The video file changed size during upload. Please try again.',
+        );
+      sent += size;
       onProgress(Math.min(99, (sent / file.size) * 100));
       yield chunk;
     }
+    if (sent !== file.size)
+      throw new Error(
+        'The video file changed size during upload. Please try again.',
+      );
     yield footer;
   }
   const request = (url.protocol === 'https:' ? httpsRequest : httpRequest)(
