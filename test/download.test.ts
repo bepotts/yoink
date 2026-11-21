@@ -56,6 +56,17 @@ vi.mock('electron-log/main', () => ({
     error: vi.fn<() => void>(),
   },
 }));
+vi.mock('../src/ipc/media-tools', () => ({
+  mediaToolPaths: () => ({
+    directory: '/bundled/media',
+    deno: '/bundled/media/deno',
+  }),
+  mediaToolVersions: { ffmpeg: 'b6.1.1', deno: 'v2.9.8' },
+}));
+vi.mock('../src/ipc/yt-dlp', () => ({
+  ytDlpPath: () => '/bundled/yt-dlp',
+  ytDlpVersion: '2026.10.26',
+}));
 vi.mock('node:child_process', () => ({ execFile: mocks.run }));
 vi.mock('node:util', () => ({ promisify: () => mocks.run }));
 vi.mock('node:fs/promises', () => ({
@@ -106,10 +117,16 @@ test('passes the URL and folder as separate arguments without a shell', async ()
     downloadVideo({ link: ` ${link} `, folder: '/tmp/My Folder' }),
   ).resolves.toEqual({ success: true });
   expect(mocks.run).toHaveBeenCalledWith(
-    'yt-dlp',
+    '/bundled/yt-dlp',
     [
       '--ignore-config',
       '--no-playlist',
+      '--ffmpeg-location',
+      '/bundled/media',
+      '--no-js-runtimes',
+      '--js-runtimes',
+      'deno:/bundled/media/deno',
+      '--no-remote-components',
       '--newline',
       '--progress',
       '--progress-template',
@@ -160,7 +177,7 @@ test('explains when yt-dlp is missing', async () => {
     await downloadVideo({ link: 'https://example.com', folder: '/tmp' }),
   ).toEqual({
     success: false,
-    error: 'yt-dlp was not found. Install yt-dlp and restart Yoink.',
+    error: 'The bundled video downloader is missing. Please reinstall Yoink.',
   });
 });
 
@@ -365,6 +382,9 @@ test('logs transfer failures without sensitive URLs or provider payloads', async
   await downloadVideo({ link: secret, folder: '/tmp/private-folder' });
   expect(log.info).toHaveBeenCalledWith('Download started', {
     destination: 'local',
+    ytDlpVersion: '2026.10.26',
+    ffmpeg: 'b6.1.1',
+    deno: 'v2.9.8',
   });
   expect(log.error).toHaveBeenCalledWith('Download failed', {
     destination: 'local',

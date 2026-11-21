@@ -22,6 +22,8 @@ import {
 import { constants } from 'node:fs';
 import { promisify } from 'node:util';
 import { createInterface } from 'node:readline';
+import { mediaToolPaths, mediaToolVersions } from './media-tools';
+import { ytDlpPath, ytDlpVersion } from './yt-dlp';
 import { parseProgress } from './download-progress';
 import { saveDownload } from './save-download';
 import {
@@ -54,7 +56,11 @@ export async function downloadVideo(
   }
 
   const cloud = getCloudDestination(request);
-  log.info('Download started', { destination: cloud ?? 'local' });
+  log.info('Download started', {
+    destination: cloud ?? 'local',
+    ytDlpVersion,
+    ...mediaToolVersions,
+  });
   try {
     if (request.uploadToS3 === true) {
       await requireS3Destination(configuredS3Destination());
@@ -82,11 +88,8 @@ export async function downloadVideo(
     };
   }
 
-  // Finder-launched macOS apps may not inherit Homebrew's PATH.
-  const env = { ...process.env };
-  if (process.platform === 'darwin') {
-    env.PATH = `${env.PATH ?? ''}:/opt/homebrew/bin:/usr/local/bin`;
-  }
+  const tools = mediaToolPaths();
+  const env = { ...process.env, DENO_NO_UPDATE_CHECK: '1' };
 
   let stagingFolder: string | undefined;
   let uploading = false;
@@ -97,10 +100,16 @@ export async function downloadVideo(
       path.join(cloud ? tmpdir() : request.folder, '.yoink-'),
     );
     const download = run(
-      'yt-dlp',
+      ytDlpPath(),
       [
         '--ignore-config',
         '--no-playlist',
+        '--ffmpeg-location',
+        tools.directory,
+        '--no-js-runtimes',
+        '--js-runtimes',
+        `deno:${tools.deno}`,
+        '--no-remote-components',
         '--newline',
         '--progress',
         '--progress-template',
@@ -196,7 +205,7 @@ export async function downloadVideo(
       success: false,
       error:
         failure.code === 'ENOENT'
-          ? 'yt-dlp was not found. Install yt-dlp and restart Yoink.'
+          ? 'The bundled video downloader is missing. Please reinstall Yoink.'
           : failure.stderr?.trim().slice(-2000) ||
             'Download failed. Please check the link and try again.',
     };
