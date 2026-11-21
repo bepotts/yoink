@@ -6,6 +6,7 @@ import { init as reactInit } from '@sentry/react';
 if (SENTRY_ENABLED) {
   Sentry.init(
     {
+      beforeSendLog: () => null,
       integrations: [
         Sentry.browserTracingIntegration(),
         Sentry.replayIntegration({ maskAllText: true, blockAllMedia: true }),
