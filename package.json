@@ -70,7 +70,7 @@
   "dependencies": {
     "@azure/msal-node": "^7.2.1",
     "@sentry/electron": "^8.4.0",
-    "@sentry/react": "11.10.0",
+    "@sentry/react": "11.15.0",
     "dropbox": "^10.66.0",
     "electron-log": "^5.4.4",
     "electron-squirrel-startup": "^1.0.1",
