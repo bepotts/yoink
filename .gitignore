@@ -157,3 +157,9 @@ logs/
 
 # macOS
 .DS_Store
+
+# Downloaded, checksum-verified yt-dlp executables prepared for development and packaging.
+/vendor/yt-dlp/bin/
+
+# Prepared FFmpeg, FFprobe, and Deno binaries; release pins are tracked separately.
+/vendor/media-tools/bin/

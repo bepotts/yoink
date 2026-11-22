@@ -1,7 +1,7 @@
 {
   "name": "yoink",
   "productName": "Yoink",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "private": true,
   "description": "Yoink desktop app",
   "keywords": [],
@@ -33,7 +33,11 @@
     "act:check": "act push --job lint && act push --job typecheck && act push --job unit-tests && act push --job coverage",
     "act:e2e": "act push --job e2e",
     "act:ci": "act push",
-    "act:all": "node scripts/run-tests.mjs act"
+    "act:all": "node scripts/run-tests.mjs act",
+    "yt-dlp:prepare": "node scripts/yt-dlp.mjs",
+    "yt-dlp:update": "node scripts/yt-dlp.mjs update",
+    "media-tools:prepare": "node scripts/media-tools.mjs",
+    "media-tools:update": "node scripts/media-tools.mjs update"
   },
   "devDependencies": {
     "@electron-forge/cli": "^8.0.1",
@@ -53,6 +57,7 @@
     "@vitejs/plugin-react": "^6.1.2",
     "@vitest/coverage-v8": "^5.0.5",
     "electron": "45.1.0",
+    "fflate": "0.8.3",
     "husky": "^9.1.7",
     "lint-staged": "^16.4.0",
     "oxfmt": "^0.41.0",

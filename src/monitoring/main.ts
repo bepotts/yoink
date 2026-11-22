@@ -1,15 +1,17 @@
-// Initializes Sentry error reporting, tracing, and forwarding of application logs.
+// Initializes Sentry error reporting and tracing alongside CloudWatch log delivery.
 
 import { app } from 'electron';
-import log from 'electron-log/main';
+import { setupCloudWatchLogging } from './cloudwatch';
 import * as Sentry from '@sentry/electron/main';
 
 // Configures monitoring before windows are created, leaving it disabled without a DSN.
 export function setupMonitoring(): void {
+  setupCloudWatchLogging();
   if (!SENTRY_DSN) return;
 
   Sentry.init({
     dsn: SENTRY_DSN,
+    beforeSendLog: () => null,
     enableOpenTelemetrySetup: true,
     release: `yoink@${app.getVersion()}`,
     environment: app.isPackaged ? 'production' : 'development',
@@ -24,20 +26,4 @@ export function setupMonitoring(): void {
       urlQueryParams: false,
     },
   });
-
-  log.transports.sentry = sentryTransport;
 }
-
-// Forward message labels without serializing errors, URLs, or provider payloads.
-const sentryTransport: import('electron-log').Transport = Object.assign(
-  (message: import('electron-log').LogMessage) => {
-    const text = message.data[0];
-    if (typeof text !== 'string') return;
-    const level =
-      message.level === 'verbose' || message.level === 'silly'
-        ? 'debug'
-        : message.level;
-    Sentry.logger[level](text);
-  },
-  { level: 'info' as const, transforms: [] },
-);

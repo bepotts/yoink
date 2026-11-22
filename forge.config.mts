@@ -1,5 +1,7 @@
 // Configures Electron packaging, installers, Vite builds, and security fuses.
 
+import { prepareMediaTools } from './scripts/media-tools.mjs';
+import { prepareYtDlp } from './scripts/yt-dlp.mjs';
 import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -20,13 +22,30 @@ if (existsSync('.env.local')) {
   loadEnvFile('.env.local');
 }
 
+// Grants Deno JIT access and lets yt-dlp load its embedded Python libraries.
+function signingOptionsForFile(filePath: string) {
+  if (/\/media-tools\/(?:x64|arm64)\/deno$/.test(filePath)) {
+    return {
+      entitlements: ['com.apple.security.cs.allow-jit'],
+    };
+  }
+  return filePath.endsWith('/yt-dlp/yt-dlp')
+    ? { entitlements: ['com.apple.security.cs.disable-library-validation'] }
+    : {};
+}
+
 const config: ForgeConfig = {
   packagerConfig: {
     name: 'Yoink',
     executableName: 'Yoink',
     appBundleId: process.env.APP_BUNDLE_ID,
     ...(process.env.MAC_SIGNING_IDENTITY
-      ? { osxSign: { identity: process.env.MAC_SIGNING_IDENTITY } }
+      ? {
+          osxSign: {
+            identity: process.env.MAC_SIGNING_IDENTITY,
+            optionsForFile: signingOptionsForFile,
+          },
+        }
       : {}),
     asar: true,
     icon: 'assets/icon',
@@ -34,6 +53,16 @@ const config: ForgeConfig = {
   },
   rebuildConfig: {},
   hooks: {
+    // Prepares resources for both development and the requested packaging target.
+    generateAssets: async (forgeConfig, platform, arch) => {
+      const directory = await prepareYtDlp(platform, arch);
+      const mediaTools = await prepareMediaTools(platform, arch);
+      forgeConfig.packagerConfig.extraResource = [
+        'assets/icon.png',
+        directory,
+        mediaTools,
+      ];
+    },
     packageAfterCopy: async (_config, buildPath) => {
       // Upload and inject debug IDs before the application is archived and signed.
       if (process.env.SENTRY_UPLOAD_SOURCEMAPS !== '1') return;

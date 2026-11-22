@@ -2,6 +2,9 @@
 
 Electron desktop app built with [Electron Forge](https://www.electronforge.io/), Vite, React and TypeScript.
 
+The backend lives in [yoink_backend](https://github.com/bepotts/yoink_backend).
+See that repository for backend setup instructions.
+
 ## Getting started
 
 ```bash

@@ -1,7 +1,7 @@
 // Verifies monitoring sampling, disabled configuration, and private log forwarding.
 
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import log from 'electron-log/main';
+import { setupCloudWatchLogging } from '../src/monitoring/cloudwatch';
 import * as Sentry from '@sentry/electron/main';
 import { setupMonitoring } from '../src/monitoring/main';
 
@@ -10,7 +10,9 @@ const app = vi.hoisted(() => ({
   getVersion: () => '1.0.0',
 }));
 vi.mock('electron', () => ({ app }));
-vi.mock('electron-log/main', () => ({ default: { transports: {} } }));
+vi.mock('../src/monitoring/cloudwatch', () => ({
+  setupCloudWatchLogging: vi.fn<() => void>(),
+}));
 vi.mock('@sentry/electron/main', () => ({
   init: vi.fn<() => void>(),
   startupTracingIntegration: () => ({ name: 'StartupTracing' }),
@@ -20,7 +22,6 @@ vi.mock('@sentry/electron/main', () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   app.isPackaged = false;
-  delete log.transports.sentry;
   vi.stubGlobal('SENTRY_DSN', 'https://public@example.com/123');
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -29,7 +30,7 @@ test('does not enable remote monitoring without a DSN', () => {
   vi.stubGlobal('SENTRY_DSN', '');
   setupMonitoring();
   expect(Sentry.init).not.toHaveBeenCalled();
-  expect(log.transports.sentry).toBeUndefined();
+  expect(setupCloudWatchLogging).toHaveBeenCalledOnce();
 });
 
 test.each([
@@ -51,15 +52,11 @@ test.each([
   );
 });
 
-test('forwards log labels without serializing provider error data', () => {
+test('keeps Sentry structured logs disabled', () => {
   setupMonitoring();
-  log.transports.sentry!({
-    data: [
-      'Download failed',
-      { token: 'private', url: 'https://example.com/private' },
-    ],
-    level: 'info',
-    date: new Date(),
-  });
-  expect(Sentry.logger.info).toHaveBeenCalledExactlyOnceWith('Download failed');
+  const options = vi.mocked(Sentry.init).mock.calls[0][0];
+  expect(options.beforeSendLog?.({} as never)).toBeNull();
+  expect(Sentry.init).toHaveBeenCalledWith(
+    expect.objectContaining({ beforeSendLog: expect.any(Function) }),
+  );
 });
